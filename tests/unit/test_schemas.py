@@ -1,6 +1,8 @@
 import pytest
 from pydantic import ValidationError
+
 from ml_engineer_exam.schemas import HousingInferenceRequest
+
 
 def test_request_schema_valid():
     """Verify that a valid payload is accepted."""

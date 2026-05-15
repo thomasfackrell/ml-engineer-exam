@@ -1,6 +1,6 @@
-import numpy as np
 import pandas as pd
 from loguru import logger
+
 
 def run_prediction(model, data: pd.DataFrame, scaler):
     """
@@ -18,11 +18,11 @@ def run_prediction(model, data: pd.DataFrame, scaler):
     """
 
     # Transform using the fitted scaler
-    logger.info(f"Scaling input data")
+    logger.info("Scaling input data")
     scaled_data = scaler.transform(data)
 
     # Make prediction
-    logger.info(f"Making predictions")
+    logger.info("Making predictions")
     predictions = model.predict(scaled_data)
 
     return predictions

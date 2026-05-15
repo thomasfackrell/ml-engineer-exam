@@ -1,8 +1,10 @@
+from pathlib import Path
+
 import pandas as pd
 from sklearn.datasets import fetch_california_housing
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from pathlib import Path
+
 
 def load_data(data_path: Path = None) -> pd.DataFrame:
     """Load California housing dataset (replacement for Boston)."""

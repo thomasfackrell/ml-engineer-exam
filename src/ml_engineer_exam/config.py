@@ -1,9 +1,9 @@
-from pydantic import BaseModel, computed_field
-from pathlib import Path
 import os
 from pathlib import Path
-from pydantic import BaseModel, ConfigDict
+
+from pydantic import BaseModel, ConfigDict, computed_field
 from pydantic_settings import BaseSettings
+
 
 class MLConfig(BaseModel):
 
@@ -54,7 +54,7 @@ class MLDeployConfig(BaseSettings):
 
     # Defaults to Lambda task root
     root_path: Path = Path(os.getenv("ROOT_PATH", "/var/task"))
-    
+
     # Path where surgical COPY placed the models in Dockerfile
     # COPY data/models ./data/models -> /var/task/data/models
     model_dir: Path = Path(os.getenv("ROOT_PATH", "/var/task")) / "data/models"
@@ -65,4 +65,4 @@ class MLDeployConfig(BaseSettings):
 
     def get_model_path(self, model_name: str) -> Path:
         return self.model_dir / f"{model_name}.joblib"
-    
+

@@ -1,7 +1,10 @@
-import joblib
 import json
+
+import joblib
 import pandas as pd
+
 from ml_engineer_exam.prediction import run_prediction
+
 
 def test_prediction_accuracy(session_fixture):
     """
@@ -10,11 +13,11 @@ def test_prediction_accuracy(session_fixture):
     """
     model = joblib.load(session_fixture['model_path'])
     scaler = joblib.load(session_fixture['scaler_path'])
-    
+
     input_info = json.loads(session_fixture['input_data'])
     # Remove model_name as the internal run_prediction function doesn't expect it
     input_info.pop("model_name", None)
-    
+
     data = pd.DataFrame([input_info])
 
     preds = run_prediction(

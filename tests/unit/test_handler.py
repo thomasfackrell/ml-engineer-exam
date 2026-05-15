@@ -1,7 +1,10 @@
 import json
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
+
 from ml_engineer_exam import handler
+
 
 @pytest.fixture
 def lambda_context():
@@ -28,19 +31,19 @@ def test_handler_success(mock_mlflow, mock_load, valid_event, lambda_context):
     # Reset the global cache for a clean test
     handler.MODEL_CACHE = {}
     handler.SCALER = None
-    
+
     # Setup mocks
     mock_load.return_value = MagicMock() # Mock the model/scaler
-    
+
     # Execute handler
     response = handler.lambda_handler(valid_event, lambda_context)
-    
+
     # Assertions
     assert response["statusCode"] == 200
     body = json.loads(response["body"])
     assert "prediction" in body
     assert body["request_id"] == "test-id-123"
-    
+
     # Verify Lazy Loading actually called load
     assert mock_load.call_count == 2 # 1 for scaler, 1 for model
 

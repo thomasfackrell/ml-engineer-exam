@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 
+
 class HousingInferenceRequest(BaseModel):
     MedInc: float = Field(..., description="Median income in block group")
     HouseAge: float = Field(..., description="Median house age in block group")

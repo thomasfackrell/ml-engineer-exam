@@ -57,8 +57,8 @@ python_functions = ["test_*"]
 
 [tool.ruff]
 line-length = 100
-select = ["I", "E", "W", "F", "B", "N"] 
-ignore = ["E501"]
+lint.select = ["I", "E", "W", "F", "B", "N"] 
+lint.ignore = ["E501","N806","N803"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["ml_engineer_exam"]

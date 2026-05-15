@@ -1,15 +1,16 @@
 import joblib
 import mlflow
 import pandas as pd
-from ml_engineer_exam.prepare import load_data, DataPreprocessor, split_features_target
+from loguru import logger
+
 from ml_engineer_exam.config import MLConfig
 from ml_engineer_exam.model.utils import HousingModel
-from loguru import logger
+from ml_engineer_exam.prepare import DataPreprocessor, load_data, split_features_target
 
 
 def run_model(model: HousingModel, ml_config: MLConfig) -> tuple:
     """Train housing price prediction model."""
-    
+
     # Set the tracking URI to your local instance
     mlflow.set_tracking_uri("http://localhost:5000")
     mlflow.set_experiment(ml_config.app_name)

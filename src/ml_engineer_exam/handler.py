@@ -1,13 +1,14 @@
 import json
 import os
+
 import joblib
+import mlflow
 import pandas as pd
 from loguru import logger
 from pydantic import ValidationError
 
-import mlflow
-from ml_engineer_exam.prediction import run_prediction
 from ml_engineer_exam.config import MLDeployConfig
+from ml_engineer_exam.prediction import run_prediction
 from ml_engineer_exam.schemas import HousingInferenceRequest
 
 # --- Global Scope: Initialized once during Cold Start ---
@@ -36,7 +37,7 @@ MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
 def lambda_handler(event, context):
     # Retrieve Request ID for cross-telemetry linking
     request_id = context.aws_request_id
-    
+
     # Structured logging for CloudWatch
     logger.info(f"RequestId: {request_id} - Received inference request.")
 
@@ -44,16 +45,16 @@ def lambda_handler(event, context):
         # 1. Payload Validation
         body = json.loads(event.get('body', '{}'))
         request_data = HousingInferenceRequest(**body)
-        
+
         # 2. Model Selection
         model_name = request_data.model_name
         if model_name not in models:
             logger.warning(f"RequestId: {request_id} - Unsupported model requested: {model_name}")
             return {
-                "statusCode": 400, 
+                "statusCode": 400,
                 "body": json.dumps({"error": f"Model '{model_name}' not supported."})
             }
-        
+
         # 3. Prediction Pipeline
         data = pd.DataFrame([request_data.model_dump(exclude={"model_name"})])
         preds = run_prediction(model=models[model_name], data=data, scaler=scaler)
@@ -64,7 +65,7 @@ def lambda_handler(event, context):
             track_inference(request_data, prediction_val, request_id)
 
         logger.success(f"RequestId: {request_id} - Inference successful. Value: {prediction_val}")
-        
+
         return {
             "statusCode": 200,
             "body": json.dumps({
@@ -86,18 +87,18 @@ def track_inference(request_data, prediction, request_id):
     try:
         mlflow.set_tracking_uri(MLFLOW_URI)
         mlflow.set_experiment("Inference_Logs")
-        
+
         with mlflow.start_run(run_name=f"Inference_{request_id}", nested=True):
             # Log the request parameters for drift analysis
             mlflow.log_params(request_data.model_dump())
-            
+
             # Log the prediction result
             mlflow.log_metric("predicted_value", prediction)
-            
+
             # THE GLUE: Link MLflow to the CloudWatch log stream
             mlflow.set_tag("aws_request_id", request_id)
             mlflow.set_tag("model_version", os.getenv("IMAGE_TAG", "latest"))
-            
+
     except Exception as e:
         # We catch but don't re-raise; we don't want telemetry failure to kill the API response
         logger.warning(f"RequestId: {request_id} - MLflow tracking failed: {e}")

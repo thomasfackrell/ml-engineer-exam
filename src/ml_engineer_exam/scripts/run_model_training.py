@@ -1,9 +1,10 @@
-import logging
 from argparse import ArgumentParser
-from ml_engineer_exam.model import run_model
-from ml_engineer_exam.config import MLConfig
-from ml_engineer_exam.model.utils import HousingModel
+
 from loguru import logger
+
+from ml_engineer_exam.config import MLConfig
+from ml_engineer_exam.model import run_model
+from ml_engineer_exam.model.utils import HousingModel
 
 
 def main():

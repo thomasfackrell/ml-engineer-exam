@@ -1,10 +1,12 @@
-from argparse import ArgumentParser
-import joblib
 import json
+from argparse import ArgumentParser
+
+import joblib
 import pandas as pd
-from ml_engineer_exam.prediction import run_prediction
-from ml_engineer_exam.config import MLConfig
 from loguru import logger
+
+from ml_engineer_exam.config import MLConfig
+from ml_engineer_exam.prediction import run_prediction
 
 
 def main():
