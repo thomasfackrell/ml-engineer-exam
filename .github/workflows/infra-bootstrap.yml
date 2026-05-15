@@ -1,7 +1,10 @@
 name: "Manual: Bootstrap TF Backend"
 
 on:
-  workflow_dispatch: # Allows manual trigger
+  push:
+    branches:
+      - feat/aws-deployment
+  workflow_dispatch:
 
 jobs:
   bootstrap:
