@@ -8,7 +8,6 @@ on:
 
 jobs:
   # Gate 0: Code Hygiene
-  # Prevents merging "messy" code into the repository.
   lint:
     name: "Code Quality"
     runs-on: ubuntu-latest
@@ -108,14 +107,39 @@ jobs:
     name: "Build & Container Verify"
     needs: infrastructure
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version_env.outputs.VERSION_OUT }} # Explicitly pass resolved version to deploy job
     steps:
       - name: Checkout
         uses: actions/checkout@v4.1.7
         with:
-          lfs: true 
+          lfs: true
+          fetch-depth: 0 # For Commitizen
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
+
+      # Automatically bump version, create changelog, and tag git
+      - name: Bump version and select tag
+        id: cz_bump
+        uses: commitizen-tools/commitizen-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }} # Built-in GitHub credential
+          branch: main
+        continue-on-error: true # Safe fallback if running on a feature branch
+
+      # Determine if we use the SemVer tag or fallback to SHA (e.g. on feature branches)
+      # Also logs version to step output for downstream Job 5 usage.
+      - name: Set Version Env Var
+        id: version_env
+        run: |
+          if [ -n "${{ steps.cz_bump.outputs.version }}" ]; then
+            echo "APP_VERSION=${{ steps.cz_bump.outputs.version }}" >> $GITHUB_ENV
+            echo "VERSION_OUT=${{ steps.cz_bump.outputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "APP_VERSION=${{ github.sha }}" >> $GITHUB_ENV
+            echo "VERSION_OUT=${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3.3.0
@@ -132,14 +156,14 @@ jobs:
         with:
           context: .
           load: true # Loads image into local Docker daemon for testing
-          tags: ${{ needs.infrastructure.outputs.ecr_url }}:${{ github.sha }}
+          tags: ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Trivy Container Image Scan
         uses: aquasecurity/trivy-action@0.35.0
         with:
-          image-ref: '${{ needs.infrastructure.outputs.ecr_url }}:${{ github.sha }}'
+          image-ref: '${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}'
           format: 'table'
           exit-code: '1'
           severity: 'HIGH,CRITICAL'
@@ -150,7 +174,7 @@ jobs:
           docker run -d --name smoke-test -p 9000:8080 \
             -e ROOT_PATH=/var/task \
             -e APP_NAME=ml_engineer_exam \
-            ${{ needs.infrastructure.outputs.ecr_url }}:${{ github.sha }}
+            ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}
           
           # Allow time for lazy-loading and emulator boot
           sleep 10
@@ -163,7 +187,7 @@ jobs:
 
       - name: Push Verified Image to ECR
         run: |
-          docker push ${{ needs.infrastructure.outputs.ecr_url }}:${{ github.sha }}
+          docker push ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}
 
   # Job 5: Deploy (Update Lambda)
   deploy:
@@ -186,4 +210,4 @@ jobs:
         working-directory: terraform/app
         run: |
           tofu init
-          tofu apply -var="container_image_tag=${{ github.sha }}" -auto-approve
+          tofu apply -var="container_image_tag=${{ needs.build_verify_push.outputs.version }}" -auto-approve
