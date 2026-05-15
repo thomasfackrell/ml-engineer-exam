@@ -1,0 +1,189 @@
+name: Deploy Application
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # Gate 0: Code Hygiene
+  # Prevents merging "messy" code into the repository.
+  lint:
+    name: "Code Quality"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.1.7
+      - uses: astral-sh/setup-uv@v3
+      
+      - name: Check for errors & import sorting
+        run: uv run ruff check .
+        
+      - name: Verify formatting
+        run: uv run ruff format --check .
+
+  # Gate 1: Python Logic & Math (Integration)
+  # Ensures schemas are valid and the model produces the correct math (0.719...)
+  # This runs on the host runner to fail early if the "brain" is broken.
+  python_tests:
+    name: "Tests: Unit & Integration"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.7
+        with:
+          lfs: true # Critical for downloading the .joblib models
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Run Unit Tests (Mocked)
+        run: uv run pytest tests/unit -v
+
+      - name: Run Integration Tests (Model Math Parity)
+        run: uv run pytest tests/integration -v
+
+  # Gate 2: Static Analysis (Security)
+  security_scans:
+    name: "Security: SAST & SCA"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.7
+        with:
+          lfs: true 
+
+      - name: Semgrep SAST (Code Scan)
+        run: |
+          python3 -m pip install semgrep
+          semgrep scan --config auto --json --output semgrep.json
+        continue-on-error: true
+
+      - name: Trivy Filesystem Scan (Dependency Scan)
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: 'fs'
+          severity: 'HIGH,CRITICAL'
+          format: 'table'
+          output: 'trivy-fs.txt'
+
+      - name: Upload Scan Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            semgrep.json
+            trivy-fs.txt
+
+  # Job 3: Infrastructure (Provision ECR)
+  # Only proceeds if tests and security scans are green.
+  infrastructure:
+    name: "Infra: Provision ECR"
+    needs: [python_tests, security_scans, lint]
+    runs-on: ubuntu-latest
+    outputs:
+      ecr_url: ${{ steps.tofu_output.outputs.ecr_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.7
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: OpenTofu Apply (ECR Only)
+        working-directory: terraform/app
+        run: |
+          tofu init
+          tofu apply -target=aws_ecr_repository.app_repo -auto-approve
+          echo "ecr_url=$(tofu output -raw ecr_repository_url)" >> $GITHUB_OUTPUT
+        id: tofu_output
+
+  # Job 4: Build, Artifact Scan, and Smoke Test
+  # This verifies the "Body" (the Docker container) before pushing.
+  build_verify_push:
+    name: "Build & Container Verify"
+    needs: infrastructure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.7
+        with:
+          lfs: true 
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.3.0
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Build Local Image
+        uses: docker/build-push-action@v5.3.0
+        with:
+          context: .
+          load: true # Loads image into local Docker daemon for testing
+          tags: ${{ needs.infrastructure.outputs.ecr_url }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy Container Image Scan
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: '${{ needs.infrastructure.outputs.ecr_url }}:${{ github.sha }}'
+          format: 'table'
+          exit-code: '1'
+          severity: 'HIGH,CRITICAL'
+
+      - name: Artifact Smoke Test (System Verification)
+        run: |
+          echo "Starting container for artifact verification..."
+          docker run -d --name smoke-test -p 9000:8080 \
+            -e ROOT_PATH=/var/task \
+            -e APP_NAME=ml_engineer_exam \
+            ${{ needs.infrastructure.outputs.ecr_url }}:${{ github.sha }}
+          
+          # Allow time for lazy-loading and emulator boot
+          sleep 10
+          
+          # Hit the RIE endpoint from the host runner
+          uv run python tests/verify_inference.py --url http://localhost:9000/2015-03-31/functions/function/invocations
+          
+          echo "Smoke test passed. Cleaning up..."
+          docker rm -f smoke-test
+
+      - name: Push Verified Image to ECR
+        run: |
+          docker push ${{ needs.infrastructure.outputs.ecr_url }}:${{ github.sha }}
+
+  # Job 5: Deploy (Update Lambda)
+  deploy:
+    name: "Deploy to AWS"
+    needs: [infrastructure, build_verify_push]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.7
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: OpenTofu Apply (Full Deployment)
+        working-directory: terraform/app
+        run: |
+          tofu init
+          tofu apply -var="container_image_tag=${{ github.sha }}" -auto-approve

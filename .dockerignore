@@ -1,0 +1,30 @@
+# --- Broad Exclusions ---
+.git
+.github
+tests/
+
+# --- Python Hygiene ---
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.pytest_cache/
+.coverage
+.venv/
+venv/
+.env
+
+# --- Project Specific Surgeries ---
+# Exclude the training logic if it's in the same folder as the handler
+src/ml_engineer_exam/model/
+src/ml_engineer_exam/prepare/
+src/ml_engineer_exam/scripts/
+
+
+# Exclude raw data (only keep the serialized models)
+data/ml_engineer_exam/
+log/
+
+# --- System Cruft ---
+.DS_Store
+Thumbs.db
