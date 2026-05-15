@@ -11,10 +11,10 @@ def test_prediction_accuracy(session_fixture):
     Component/Integration test using real binary assets.
     Ensures numerical parity with research results.
     """
-    model = joblib.load(session_fixture['model_path'])
-    scaler = joblib.load(session_fixture['scaler_path'])
+    model = joblib.load(session_fixture["model_path"])
+    scaler = joblib.load(session_fixture["scaler_path"])
 
-    input_info = json.loads(session_fixture['input_data'])
+    input_info = json.loads(session_fixture["input_data"])
     # Remove model_name as the internal run_prediction function doesn't expect it
     input_info.pop("model_name", None)
 

@@ -12,17 +12,19 @@ def test_inference(url, verify_mlflow=False):
     Tests the Lambda inference endpoint and optionally verifies MLflow logs.
     """
     payload = {
-        "body": json.dumps({
-            "MedInc": 8.3252,
-            "HouseAge": 41.0,
-            "AveRooms": 6.9841,
-            "AveBedrms": 1.0238,
-            "Population": 322.0,
-            "AveOccup": 2.5555,
-            "Latitude": 37.88,
-            "Longitude": -122.23,
-            "model_name": "linear"
-        })
+        "body": json.dumps(
+            {
+                "MedInc": 8.3252,
+                "HouseAge": 41.0,
+                "AveRooms": 6.9841,
+                "AveBedrms": 1.0238,
+                "Population": 322.0,
+                "AveOccup": 2.5555,
+                "Latitude": 37.88,
+                "Longitude": -122.23,
+                "model_name": "linear",
+            }
+        )
     }
 
     # 1. Test Lambda Endpoint
@@ -44,14 +46,15 @@ def test_inference(url, verify_mlflow=False):
     assert response.status_code == 200
 
     # Parse the nested body from the Lambda Proxy response
-    inner_body = json.loads(result['body'])
-    prediction = inner_body['prediction']
+    inner_body = json.loads(result["body"])
+    prediction = inner_body["prediction"]
     logger.success(f"Inference Successful! Prediction: {prediction}")
 
     # 2. Verify MLflow Tracking (Conditional)
     if verify_mlflow:
         try:
             import mlflow
+
             logger.info("Verifying MLflow logs...")
 
             mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
@@ -81,17 +84,18 @@ def test_inference(url, verify_mlflow=False):
     else:
         logger.info("Skipping MLflow verification (running in CI/Integ-mode).")
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Verify Lambda Inference Service")
     parser.add_argument(
         "--url",
         default="http://localhost:9000/2015-03-31/functions/function/invocations",
-        help="The URL of the Lambda invocation endpoint"
+        help="The URL of the Lambda invocation endpoint",
     )
     parser.add_argument(
         "--verify-mlflow",
         action="store_true",
-        help="If set, the script will attempt to verify metrics in the local MLflow server"
+        help="If set, the script will attempt to verify metrics in the local MLflow server",
     )
 
     args = parser.parse_args()

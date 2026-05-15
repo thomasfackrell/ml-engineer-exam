@@ -11,10 +11,11 @@ def main():
 
     argument_parser = ArgumentParser()
     argument_parser.add_argument(
-        '-mn', '--model_name',
+        "-mn",
+        "--model_name",
         type=str,
-        default='linear',
-        help='Type of model to train (linear, ridge, random_forest)'
+        default="linear",
+        help="Type of model to train (linear, ridge, random_forest)",
     )
 
     args = argument_parser.parse_args()
@@ -24,12 +25,9 @@ def main():
 
     housing_model = HousingModel(model_type=config.model_name)
 
-    logger.add(config.log_dir / f'{config.model_name}_training.log', rotation="10 MB")
+    logger.add(config.log_dir / f"{config.model_name}_training.log", rotation="10 MB")
 
-    model, metrics = run_model(
-        model=housing_model,
-        ml_config=config
-    )
+    model, metrics = run_model(model=housing_model, ml_config=config)
 
     logger.info("Model Training Complete!")
     logger.info(f"RMSE: {metrics['rmse']:.2f}")
@@ -39,7 +37,5 @@ def main():
     return model, metrics
 
 
-if __name__ == '__main__':
-
-
+if __name__ == "__main__":
     main()

@@ -20,19 +20,20 @@ try:
     models = {
         "linear": joblib.load(config.get_model_path("linear")),
         "ridge": joblib.load(config.get_model_path("ridge")),
-        "random_forest": joblib.load(config.get_model_path("random_forest"))
+        "random_forest": joblib.load(config.get_model_path("random_forest")),
     }
     scaler = joblib.load(config.scaler_path)
     logger.success("All models and scaler loaded successfully.")
 except Exception as e:
     logger.error(f"Cold Start Initialization Failed: {e}")
-    raise e # Force Lambda to restart and try again
+    raise e  # Force Lambda to restart and try again
 
 # MLflow Environment Variables
 ENABLE_MLFLOW = os.getenv("ENABLE_MLFLOW", "false").lower() == "true"
 MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
 
 # --- Handler logic ---
+
 
 def lambda_handler(event, context):
     # Retrieve Request ID for cross-telemetry linking
@@ -43,7 +44,7 @@ def lambda_handler(event, context):
 
     try:
         # 1. Payload Validation
-        body = json.loads(event.get('body', '{}'))
+        body = json.loads(event.get("body", "{}"))
         request_data = HousingInferenceRequest(**body)
 
         # 2. Model Selection
@@ -52,7 +53,7 @@ def lambda_handler(event, context):
             logger.warning(f"RequestId: {request_id} - Unsupported model requested: {model_name}")
             return {
                 "statusCode": 400,
-                "body": json.dumps({"error": f"Model '{model_name}' not supported."})
+                "body": json.dumps({"error": f"Model '{model_name}' not supported."}),
             }
 
         # 3. Prediction Pipeline
@@ -68,19 +69,24 @@ def lambda_handler(event, context):
 
         return {
             "statusCode": 200,
-            "body": json.dumps({
-                "prediction": prediction_val,
-                "model_used": model_name,
-                "request_id": request_id
-            })
+            "body": json.dumps(
+                {"prediction": prediction_val, "model_used": model_name, "request_id": request_id}
+            ),
         }
 
     except ValidationError as e:
         logger.error(f"RequestId: {request_id} - Validation Error: {e.json()}")
-        return {"statusCode": 400, "body": json.dumps({"error": "Validation Error", "details": e.errors()})}
+        return {
+            "statusCode": 400,
+            "body": json.dumps({"error": "Validation Error", "details": e.errors()}),
+        }
     except Exception as e:
         logger.critical(f"RequestId: {request_id} - Critical Failure: {e}")
-        return {"statusCode": 500, "body": json.dumps({"error": "Internal Server Error", "request_id": request_id})}
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": "Internal Server Error", "request_id": request_id}),
+        }
+
 
 def track_inference(request_data, prediction, request_id):
     """Logs analytical metrics to MLflow with a link back to CloudWatch logs."""
