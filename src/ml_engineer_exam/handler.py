@@ -11,31 +11,41 @@ from ml_engineer_exam.config import MLDeployConfig
 from ml_engineer_exam.prediction import run_prediction
 from ml_engineer_exam.schemas import HousingInferenceRequest
 
-# --- Global Scope: Initialized once during Cold Start ---
-config = MLDeployConfig()
-
-# Pre-load all available models and the common scaler
-try:
-    logger.info("Initializing models in global scope...")
-    models = {
-        "linear": joblib.load(config.get_model_path("linear")),
-        "ridge": joblib.load(config.get_model_path("ridge")),
-        "random_forest": joblib.load(config.get_model_path("random_forest")),
-    }
-    scaler = joblib.load(config.scaler_path)
-    logger.success("All models and scaler loaded successfully.")
-except Exception as e:
-    logger.error(f"Cold Start Initialization Failed: {e}")
-    raise e  # Force Lambda to restart and try again
-
 # MLflow Environment Variables
 ENABLE_MLFLOW = os.getenv("ENABLE_MLFLOW", "false").lower() == "true"
 MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
 
-# --- Handler logic ---
+# --- Global Scope: Declarations ---
+config = MLDeployConfig()
+models = {}
+scaler = None
+is_initialized = False
+
+
+def initialize_service():
+    """Initializes models and scaler once safely."""
+    global models, scaler, is_initialized
+    if is_initialized:
+        return
+
+    try:
+        logger.info("Initializing models in global scope...")
+        models = {
+            "linear": joblib.load(config.get_model_path("linear")),
+            "ridge": joblib.load(config.get_model_path("ridge")),
+            "random_forest": joblib.load(config.get_model_path("random_forest")),
+        }
+        scaler = joblib.load(config.scaler_path)
+        logger.success("All models and scaler loaded successfully.")
+        is_initialized = True
+    except Exception as e:
+        logger.error(f"Cold Start Initialization Failed: {e}")
+        raise e
 
 
 def lambda_handler(event, context):
+    initialize_service()
+
     # Retrieve Request ID for cross-telemetry linking
     request_id = context.aws_request_id
 
