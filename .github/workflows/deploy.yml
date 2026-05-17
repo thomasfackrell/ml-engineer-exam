@@ -108,7 +108,8 @@ jobs:
       - name: OpenTofu Apply (ECR Only)
         working-directory: terraform/app
         run: |
-          tofu init
+          ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+          tofu init -backend-config="bucket=ml-engineer-exam-tf-state-${ACCOUNT_ID}"
           tofu apply -target=aws_ecr_repository.app_repo -auto-approve
           echo "ecr_url=$(tofu output -raw ecr_repository_url)" >> $GITHUB_OUTPUT
         id: tofu_output
@@ -225,5 +226,6 @@ jobs:
       - name: OpenTofu Apply (Full Deployment)
         working-directory: terraform/app
         run: |
-          tofu init
+          ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+          tofu init -backend-config="bucket=ml-engineer-exam-tf-state-${ACCOUNT_ID}"
           tofu apply -var="container_image_tag=${{ needs.build_verify_push.outputs.version }}" -auto-approve
