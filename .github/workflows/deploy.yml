@@ -50,7 +50,7 @@ jobs:
       - name: Run Integration Tests (Model Math Parity)
         run: uv run pytest tests/integration -v
 
-  # Gate 2: Static Analysis (Runs on Draft & Full PRs)
+# Gate 2: Static Analysis (Runs on Draft & Full PRs)
   security_scans:
     name: "Security: SAST & SCA"
     runs-on: ubuntu-latest
@@ -60,12 +60,13 @@ jobs:
         with:
           lfs: true 
 
+      # If Semgrep finds blocking issues, it returns exit code 1 and kills the job immediately.
       - name: Semgrep SAST (Code Scan)
         run: |
           python3 -m pip install semgrep
-          semgrep scan --config auto --json --output semgrep.json
-        continue-on-error: true
+          semgrep scan --config auto --json --output semgrep.json --error
 
+      # Retained 'output' here because we need the report files saved for successful builds.
       - name: Trivy Filesystem Scan (Dependency Scan)
         uses: aquasecurity/trivy-action@0.35.0
         with:
@@ -73,6 +74,7 @@ jobs:
           severity: 'HIGH,CRITICAL'
           format: 'table'
           output: 'trivy-fs.txt'
+          exit-code: '1'
 
       - name: Upload Scan Artifacts
         uses: actions/upload-artifact@v4
@@ -81,6 +83,7 @@ jobs:
           path: |
             semgrep.json
             trivy-fs.txt
+          retention-days: 14
 
   # Job 3: Infrastructure (SKIPPED on Draft PRs)
   # Only proceeds if tests and security scans are green, and the PR is not a draft.
