@@ -14,13 +14,13 @@ def test_prediction(session_fixture):
     :return:
         None
     """
+    config = session_fixture["config"]
+    model_path = config.get_model_path("linear")
+    model = joblib.load(model_path)
 
-    model = joblib.load(session_fixture["model_path"])
+    scaler = joblib.load(session_fixture["scaler_path"])
 
-    scaler = joblib.load(session_fixture["model_path"].with_name("scaler.joblib"))
-
-    input_info = json.loads(session_fixture["input_data"])
-    input_info.pop("model_name", None)
+    input_info = session_fixture["input_data"]
 
     data = pd.DataFrame([input_info])
 

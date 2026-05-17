@@ -3,6 +3,13 @@ provider "aws" {
   region = "us-east-1"
 }
 
+# 0. KMS Key for Infrastructure Encryption
+resource "aws_kms_key" "infra_key" {
+  description             = "KMS key for Terraform state and locks"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+}
+
 # 1. S3 Bucket to store the Terraform state files
 resource "aws_s3_bucket" "terraform_state" {
   # Use the account ID to ensure the bucket name is globally unique
@@ -28,7 +35,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "default" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      kms_master_key_id = aws_kms_key.infra_key.arn
+      sse_algorithm     = "aws:kms"
     }
   }
 }
@@ -42,6 +50,11 @@ resource "aws_dynamodb_table" "terraform_locks" {
   attribute {
     name = "LockID"
     type = "S"
+  }
+
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = aws_kms_key.infra_key.arn
   }
 }
 

@@ -1,8 +1,12 @@
 # 1. ECR Repository to store the Docker Image
 resource "aws_ecr_repository" "app_repo" {
   name                 = "ml-engineer-exam" # Derived from project name
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
   force_delete         = true # Facilitates easy cleanup during assessment cycles
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
 }
 
 # 2. IAM Role and Execution Policy for Lambda
@@ -25,7 +29,19 @@ resource "aws_iam_role_policy_attachment" "lambda_logs" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+# Attach X-Ray tracing permissions
+resource "aws_iam_role_policy_attachment" "lambda_xray" {
+  role       = aws_iam_role.lambda_exec.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+}
+
 # 3. Lambda Function (Container Image based)
+resource "aws_kms_key" "lambda_key" {
+  description             = "KMS key for Lambda environment variables"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+}
+
 resource "aws_lambda_function" "inference_service" {
   function_name = "HousingInferenceService"
   role          = aws_iam_role.lambda_exec.arn
@@ -36,6 +52,12 @@ resource "aws_lambda_function" "inference_service" {
 
   timeout     = 30
   memory_size = 1024 # Allocated to handle Random Forest model and MLflow overhead
+
+  kms_key_arn = aws_kms_key.lambda_key.arn
+
+  tracing_config {
+    mode = "Active"
+  }
 
   environment {
     variables = {

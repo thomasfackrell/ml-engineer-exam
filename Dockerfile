@@ -30,4 +30,9 @@ COPY data/models ./data/models
 ENV ROOT_PATH=${LAMBDA_TASK_ROOT}
 ENV APP_NAME=ml_engineer_exam
 
+# 8. SECURITY: Use a non-root user for execution
+# Lambda RIE (local) and production Lambda support non-root users
+RUN useradd -u 1001 appuser
+USER appuser
+
 CMD [ "ml_engineer_exam.handler.lambda_handler" ]
