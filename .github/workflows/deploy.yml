@@ -84,11 +84,15 @@ jobs:
 
 
       - name: Trivy Filesystem Scan (Dependency Scan)
-        run: |
-          echo "=== 1. RUNNING DEPENDENCY SCAN & SAVING REPORT ==="
-          # Generate report file and fail if High/Critical found
-          trivy fs . --severity HIGH,CRITICAL --format table --output trivy-fs.txt --exit-code 1
-          
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'HIGH,CRITICAL'
+          format: 'table'
+          output: 'trivy-fs.txt'
+          exit-code: '1'
+
       - name: Print Trivy Results
         if: always() 
         run: |
@@ -210,9 +214,13 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Trivy Container Image Scan
-        run: |
-          # Use trivy binary directly to save to file while maintaining exit code logic
-          trivy image --severity HIGH,CRITICAL --format table --output trivy-image.txt --exit-code 1 ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: '${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}'
+          severity: 'HIGH,CRITICAL'
+          format: 'table'
+          output: 'trivy-image.txt'
+          exit-code: '1'
 
       - name: Print Container Scan Results
         if: always()
