@@ -20,6 +20,7 @@ def test_prediction(session_fixture):
     scaler = joblib.load(session_fixture["model_path"].with_name("scaler.joblib"))
 
     input_info = json.loads(session_fixture["input_data"])
+    input_info.pop("model_name", None)
 
     data = pd.DataFrame([input_info])
 

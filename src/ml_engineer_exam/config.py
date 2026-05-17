@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 from pydantic_settings import BaseSettings
 
 
@@ -56,12 +56,14 @@ class MLDeployConfig(BaseSettings):
 
     model_config = ConfigDict(extra="ignore")
 
-    # Defaults to Lambda task root
-    root_path: Path = Path(os.getenv("ROOT_PATH", "/var/task"))
+    # Defaults to Lambda task root, or local repo root if not in Lambda
+    root_path: Path = Field(default_factory=lambda: Path(os.getenv("ROOT_PATH", os.getcwd())))
 
-    # Path where surgical COPY placed the models in Dockerfile
-    # COPY data/models ./data/models -> /var/task/data/models
-    model_dir: Path = Path(os.getenv("ROOT_PATH", "/var/task")) / "data/models"
+    @property
+    def model_dir(self) -> Path:
+        # If in Lambda, models are at /var/task/data/models
+        # If local/CI, they are at <repo_root>/data/models
+        return self.root_path / "data/models"
 
     @property
     def scaler_path(self) -> Path:
