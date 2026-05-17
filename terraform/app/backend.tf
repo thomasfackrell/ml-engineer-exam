@@ -7,8 +7,7 @@ terraform {
   }
 
   backend "s3" {
-    # This matches the bucket name created by the bootstrap run
-    bucket         = "ml-engineer-exam-tf-state-${data.aws_caller_identity.current.account_id}"
+    # Bucket name applied dynamically in CI OpenTofu CLI call
     key            = "app/terraform.tfstate"
     region         = "us-east-1"
     dynamodb_table = "ml-engineer-exam-tflock"
