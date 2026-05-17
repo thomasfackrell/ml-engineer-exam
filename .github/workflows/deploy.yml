@@ -45,10 +45,20 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run Unit Tests (Mocked)
-        run: uv run pytest tests/unit -v
+        run: uv run pytest tests/unit -v --junitxml=unit-test-report.xml
 
       - name: Run Integration Tests (Model Math Parity)
-        run: uv run pytest tests/integration -v
+        run: uv run pytest tests/integration -v --junitxml=integration-test-report.xml
+
+      - name: Upload Test Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-test-reports
+          path: |
+            unit-test-report.xml
+            integration-test-report.xml
+          retention-days: 14
 
 # Gate 2: Static Analysis (Runs on Draft & Full PRs)
   security_scans:
@@ -60,24 +70,40 @@ jobs:
         with:
           lfs: true 
 
-      # If Semgrep finds blocking issues, it returns exit code 1 and kills the job immediately.
+      # Pass 1 saves the JSON file unconditionally.
+      # Pass 2 uses --error to print findings and will fail the step if issues exist.
       - name: Semgrep SAST (Code Scan)
         run: |
           python3 -m pip install semgrep
-          semgrep scan --config auto --json --output semgrep.json --error
+          
+          echo "=== 1. COMPILING BACKGROUND REPORTS ==="
+          semgrep scan --config auto --json --output semgrep.json
+          
+          echo "=== 2. RUNNING CONSOLE LOG SAST ANALYSIS ==="
+          semgrep scan --config auto --error
 
-      # Retained 'output' here because we need the report files saved for successful builds.
+
       - name: Trivy Filesystem Scan (Dependency Scan)
-        uses: aquasecurity/trivy-action@0.35.0
-        with:
-          scan-type: 'fs'
-          severity: 'HIGH,CRITICAL'
-          format: 'table'
-          output: 'trivy-fs.txt'
-          exit-code: '1'
+        run: |
+          echo "=== 1. RUNNING DEPENDENCY SCAN & SAVING REPORT ==="
+          # Generate report file and fail if High/Critical found
+          trivy fs . --severity HIGH,CRITICAL --format table --output trivy-fs.txt --exit-code 1
+          
+      - name: Print Trivy Results
+        if: always() 
+        run: |
+          echo "=== 2. SCAN PROCESS COMPLETE! PRINTING RESULTS TO CONSOLE ==="
+          if [ -f trivy-fs.txt ]; then
+            cat trivy-fs.txt
+          else
+            echo "Error: trivy-fs.txt was not generated."
+          fi
 
+      # FIXED: Added 'if: always()' so that diagnostic artifacts are uploaded even if 
+      # Semgrep or Trivy fail the job. Kept retention at 14 days.
       - name: Upload Scan Artifacts
         uses: actions/upload-artifact@v4
+        if: always() 
         with:
           name: security-reports
           path: |
@@ -184,12 +210,24 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Trivy Container Image Scan
-        uses: aquasecurity/trivy-action@0.35.0
+        run: |
+          # Use trivy binary directly to save to file while maintaining exit code logic
+          trivy image --severity HIGH,CRITICAL --format table --output trivy-image.txt --exit-code 1 ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}
+
+      - name: Print Container Scan Results
+        if: always()
+        run: |
+          if [ -f trivy-image.txt ]; then
+            cat trivy-image.txt
+          fi
+
+      - name: Upload Container Scan Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
         with:
-          image-ref: '${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}'
-          format: 'table'
-          exit-code: '1'
-          severity: 'HIGH,CRITICAL'
+          name: container-security-report
+          path: trivy-image.txt
+          retention-days: 14
 
       - name: Artifact Smoke Test (System Verification)
         run: |

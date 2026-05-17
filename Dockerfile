@@ -19,9 +19,9 @@ COPY src/ml_engineer_exam ./src/ml_engineer_exam
 
 # 5. Install dependencies and the project as a system package
 # This makes 'import ml_engineer_exam' work anywhere in the container
-RUN uv pip install . --system --no-dev
+RUN uv pip install . --system
 
-# 6. SURGICAL COPY: Model artifacts
+# 6. COPY: Model artifacts
 # We preserve the 'data/models' pathing so MLDeployConfig can find them
 COPY data/models ./data/models
 
