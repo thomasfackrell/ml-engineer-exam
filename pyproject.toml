@@ -12,7 +12,7 @@ dependencies = [
     "scikit-learn>=1.6.0", #  1.6 is stable for 2026
     "joblib>=1.5.3",       # Explicitly required for model loading
     "mlflow>=2.11.0",
-    "protobuf<5.0.0",
+    "protobuf==6.33.5",  # Updated for Trivy SCA scan
     "wheel"
 ]
 
