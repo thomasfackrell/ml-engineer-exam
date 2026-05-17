@@ -1,9 +1,6 @@
 name: "Manual: Bootstrap TF Backend"
 
 on:
-  push:
-    branches:
-      - feat/aws-deployment
   workflow_dispatch:
 
 jobs:
