@@ -7,7 +7,7 @@ import requests
 from loguru import logger
 
 
-def test_inference(url, verify_mlflow=False):
+def test_inference(url, model_name="linear", verify_mlflow=False):
     """
     Tests the Lambda inference endpoint and optionally verifies MLflow logs.
     """
@@ -22,7 +22,7 @@ def test_inference(url, verify_mlflow=False):
                 "AveOccup": 2.5555,
                 "Latitude": 37.88,
                 "Longitude": -122.23,
-                "model_name": "linear",
+                "model_name": model_name,
             }
         )
     }
@@ -93,10 +93,15 @@ if __name__ == "__main__":
         help="The URL of the Lambda invocation endpoint",
     )
     parser.add_argument(
+        "--model",
+        default="linear",
+        help="The model name to test (linear, ridge, random_forest)",
+    )
+    parser.add_argument(
         "--verify-mlflow",
         action="store_true",
         help="If set, the script will attempt to verify metrics in the local MLflow server",
     )
 
     args = parser.parse_args()
-    test_inference(url=args.url, verify_mlflow=args.verify_mlflow)
+    test_inference(url=args.url, model_name=args.model, verify_mlflow=args.verify_mlflow)

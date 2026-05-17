@@ -111,7 +111,10 @@ jobs:
           ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
           tofu init -backend-config="bucket=ml-engineer-exam-tf-state-${ACCOUNT_ID}"
           tofu apply -target=aws_ecr_repository.app_repo -auto-approve
-          echo "ecr_url=$(tofu output -raw ecr_repository_url)" >> $GITHUB_OUTPUT
+          
+          # Pull the URL directly from the target state resource instead of a root output macro
+          ECR_URL=$(tofu state show aws_ecr_repository.app_repo | grep repository_url | awk -F '"' '{print $2}')
+          echo "ecr_url=${ECR_URL}" >> $GITHUB_OUTPUT
         id: tofu_output
 
   # Job 4: Build, Artifact Scan, and Smoke Test (SKIPPED on Draft PRs)
@@ -193,10 +196,12 @@ jobs:
           # Allow time for lazy-loading and emulator boot
           sleep 10
           
-          # Hit the RIE endpoint from the host runner
-          uv run python tests/verify_inference.py --url http://localhost:9000/2015-03-31/functions/function/invocations
+          # Hit the RIE endpoint 3 times, passing a different model target in the payload!
+          uv run python tests/verify_inference.py --url http://localhost:9000/2015-03-31/functions/function/invocations --model linear
+          uv run python tests/verify_inference.py --url http://localhost:9000/2015-03-31/functions/function/invocations --model ridge
+          uv run python tests/verify_inference.py --url http://localhost:9000/2015-03-31/functions/function/invocations --model random_forest
           
-          echo "Smoke test passed. Cleaning up..."
+          echo "All model smoke tests passed inside emulator. Cleaning up..."
           docker rm -f smoke-test
 
       - name: Push Verified Image to ECR
