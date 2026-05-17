@@ -36,7 +36,7 @@ def valid_event():
 
 @patch("ml_engineer_exam.handler.joblib.load")
 @patch("ml_engineer_exam.handler.mlflow")
-def test_handler_success(mock_mlflow, mock_load, valid_event, lambda_context):
+def test_handler_linear_success(mock_mlflow, mock_load, valid_event, lambda_context):
     """Verifies the full handler flow with mocked assets."""
     # Reset the global cache for a clean test
     handler.MODEL_CACHE = {}
@@ -56,6 +56,48 @@ def test_handler_success(mock_mlflow, mock_load, valid_event, lambda_context):
 
     # Verify Lazy Loading actually called load
     assert mock_load.call_count == 2  # 1 for scaler, 1 for model
+
+
+@patch("ml_engineer_exam.handler.joblib.load")
+@patch("ml_engineer_exam.handler.mlflow")
+def test_handler_ridge_success(mock_mlflow, mock_load, valid_event, lambda_context):
+    """Verifies the handler flow with the ridge model."""
+    handler.MODEL_CACHE = {}
+    handler.SCALER = None
+    mock_load.return_value = MagicMock()
+
+    # Update event to use ridge
+    event = json.loads(valid_event["body"])
+    event["model_name"] = "ridge"
+    valid_event["body"] = json.dumps(event)
+
+    response = handler.lambda_handler(valid_event, lambda_context)
+
+    assert response["statusCode"] == 200
+    body = json.loads(response["body"])
+    assert body["model_used"] == "ridge"
+    assert mock_load.call_count == 2
+
+
+@patch("ml_engineer_exam.handler.joblib.load")
+@patch("ml_engineer_exam.handler.mlflow")
+def test_handler_random_forest_success(mock_mlflow, mock_load, valid_event, lambda_context):
+    """Verifies the handler flow with the random_forest model."""
+    handler.MODEL_CACHE = {}
+    handler.SCALER = None
+    mock_load.return_value = MagicMock()
+
+    # Update event to use random_forest
+    event = json.loads(valid_event["body"])
+    event["model_name"] = "random_forest"
+    valid_event["body"] = json.dumps(event)
+
+    response = handler.lambda_handler(valid_event, lambda_context)
+
+    assert response["statusCode"] == 200
+    body = json.loads(response["body"])
+    assert body["model_used"] == "random_forest"
+    assert mock_load.call_count == 2
 
 
 def test_handler_validation_error(lambda_context):

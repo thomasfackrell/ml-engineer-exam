@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -10,4 +12,6 @@ class HousingInferenceRequest(BaseModel):
     AveOccup: float = Field(..., description="Average number of household members")
     Latitude: float = Field(..., description="Block group latitude")
     Longitude: float = Field(..., description="Block group longitude")
-    model_name: str = Field(default="linear", description="Model type to use")
+    model_name: Literal["linear", "ridge", "random_forest"] = Field(
+        default="linear", description="Model type to use"
+    )

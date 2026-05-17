@@ -17,34 +17,12 @@ MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
 
 # --- Global Scope: Declarations ---
 config = MLDeployConfig()
-models = {}
-scaler = None
-is_initialized = False
-
-
-def initialize_service():
-    """Initializes models and scaler once safely."""
-    global models, scaler, is_initialized
-    if is_initialized:
-        return
-
-    try:
-        logger.info("Initializing models in global scope...")
-        models = {
-            "linear": joblib.load(config.get_model_path("linear")),
-            "ridge": joblib.load(config.get_model_path("ridge")),
-            "random_forest": joblib.load(config.get_model_path("random_forest")),
-        }
-        scaler = joblib.load(config.scaler_path)
-        logger.success("All models and scaler loaded successfully.")
-        is_initialized = True
-    except Exception as e:
-        logger.error(f"Cold Start Initialization Failed: {e}")
-        raise e
+MODEL_CACHE = {}
+SCALER = None
 
 
 def lambda_handler(event, context):
-    initialize_service()
+    global MODEL_CACHE, SCALER
 
     # Retrieve Request ID for cross-telemetry linking
     request_id = context.aws_request_id
@@ -57,18 +35,20 @@ def lambda_handler(event, context):
         body = json.loads(event.get("body", "{}"))
         request_data = HousingInferenceRequest(**body)
 
-        # 2. Model Selection
+        # 2. Model Selection & Lazy Loading
         model_name = request_data.model_name
-        if model_name not in models:
-            logger.warning(f"RequestId: {request_id} - Unsupported model requested: {model_name}")
-            return {
-                "statusCode": 400,
-                "body": json.dumps({"error": f"Model '{model_name}' not supported."}),
-            }
+
+        if SCALER is None:
+            logger.info("Cold Start: Loading scaler...")
+            SCALER = joblib.load(config.scaler_path)
+
+        if model_name not in MODEL_CACHE:
+            logger.info(f"Cold Start: Loading model '{model_name}'...")
+            MODEL_CACHE[model_name] = joblib.load(config.get_model_path(model_name))
 
         # 3. Prediction Pipeline
         data = pd.DataFrame([request_data.model_dump(exclude={"model_name"})])
-        preds = run_prediction(model=models[model_name], data=data, scaler=scaler)
+        preds = run_prediction(model=MODEL_CACHE[model_name], data=data, scaler=SCALER)
         prediction_val = float(preds[0])
 
         # 4. Telemetry Linking
