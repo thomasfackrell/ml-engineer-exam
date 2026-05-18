@@ -39,6 +39,14 @@ jobs:
         with:
           lfs: true # Critical for downloading the .joblib models
 
+      - name: Cache Git LFS files
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: ${{ runner.os }}-lfs-${{ hashFiles('.gitattributes') }}
+          restore-keys: |
+            ${{ runner.os }}-lfs-
+
       - name: Install uv
         uses: astral-sh/setup-uv@v3
 
@@ -70,7 +78,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4.1.7
         with:
-          lfs: true 
+          lfs: true
+      
+      - name: Cache Git LFS files
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: ${{ runner.os }}-lfs-${{ hashFiles('.gitattributes') }}
+          restore-keys: |
+            ${{ runner.os }}-lfs-
 
       - name: Semgrep SAST (Code Scan)
         # ASSESSMENT OVERRIDE: Allowed to log warnings without breaking review apps
@@ -191,6 +207,14 @@ jobs:
         with:
           lfs: true
           fetch-depth: 0 
+
+      - name: Cache Git LFS files
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: ${{ runner.os }}-lfs-${{ hashFiles('.gitattributes') }}
+          restore-keys: |
+            ${{ runner.os }}-lfs-
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
