@@ -141,6 +141,8 @@ jobs:
       - name: OpenTofu Execution Engine
         working-directory: terraform/app
         id: tofu_output
+        env:
+          GITHUB_REF: ${{ github.ref }}
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
           tofu init -backend-config="bucket=ml-engineer-exam-tf-state-${ACCOUNT_ID}"
@@ -153,7 +155,7 @@ jobs:
           echo "ecr_url=${ECR_URL}" >> $GITHUB_OUTPUT
           
           # Dynamic branching logic based on branch target context
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
             echo "=== 2. MAIN BRANCH DETECTED: SKIPPING INTERMEDIATE PLAN ==="
           else
             echo "=== 2. PULL REQUEST DETECTED: GENERATING INFRASTRUCTURE PREVIEW ==="
@@ -191,13 +193,16 @@ jobs:
       # Also logs version to step output for downstream Job 5 usage.
       - name: Set Version Env Var
         id: version_env
+        env:
+          CZ_VERSION: ${{ steps.cz_bump.outputs.version }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
-          if [ -n "${{ steps.cz_bump.outputs.version }}" ]; then
-            echo "APP_VERSION=${{ steps.cz_bump.outputs.version }}" >> $GITHUB_ENV
-            echo "VERSION_OUT=${{ steps.cz_bump.outputs.version }}" >> $GITHUB_OUTPUT
+          if [ -n "$CZ_VERSION" ]; then
+            echo "APP_VERSION=$CZ_VERSION" >> $GITHUB_ENV
+            echo "VERSION_OUT=$CZ_VERSION" >> $GITHUB_OUTPUT
           else
-            echo "APP_VERSION=${{ github.sha }}" >> $GITHUB_ENV
-            echo "VERSION_OUT=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "APP_VERSION=$GITHUB_SHA" >> $GITHUB_ENV
+            echo "VERSION_OUT=$GITHUB_SHA" >> $GITHUB_OUTPUT
           fi
 
       - name: Set up Docker Buildx
@@ -215,16 +220,18 @@ jobs:
 
       - name: Check if Image Tag Exists in ECR
         id: check_tag
+        env:
+          APP_VERSION: ${{ env.APP_VERSION }}
         run: |
           # Query ECR for the specific image tag. If found, it returns exit code 0.
-          if aws ecr describe-images --repository-name ml-engineer-exam --image-ids imageTag=${{ env.APP_VERSION }} >/dev/null 2>&1; then
+          if aws ecr describe-images --repository-name ml-engineer-exam --image-ids imageTag="$APP_VERSION" >/dev/null 2>&1; then
             echo "TAG_EXISTS=true" >> $GITHUB_ENV
             echo "tag_exists=true" >> $GITHUB_OUTPUT
-            echo "⚠️ Tag ${{ env.APP_VERSION }} already exists in ECR. Will skip build and push operations."
+            echo "⚠️ Tag $APP_VERSION already exists in ECR. Will skip build and push operations."
           else
             echo "TAG_EXISTS=false" >> $GITHUB_ENV
             echo "tag_exists=false" >> $GITHUB_OUTPUT
-            echo "✅ Tag ${{ env.APP_VERSION }} is new. Proceeding with build."
+            echo "✅ Tag $APP_VERSION is new. Proceeding with build."
           fi
         continue-on-error: true
 
@@ -270,12 +277,15 @@ jobs:
 
       # STEP C: Run Smoke tests against the test target
       - name: Artifact Smoke Test (System Verification)
+        env:
+          ECR_URL: ${{ needs.infrastructure.outputs.ecr_url }}
+          APP_VERSION: ${{ env.APP_VERSION }}
         run: |
           echo "Starting container for artifact verification..."
           docker run -d --name smoke-test -p 9000:8080 \
             -e ROOT_PATH=/var/task \
             -e APP_NAME=ml_engineer_exam \
-            ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}-test
+            "$ECR_URL:$APP_VERSION-test"
           
           sleep 10
           
@@ -288,12 +298,15 @@ jobs:
 
       # STEP D: Tests passed! Now compile the pristine production image target and push it
       - name: Build & Push Production Image to ECR
+        env:
+          ECR_URL: ${{ needs.infrastructure.outputs.ecr_url }}
+          APP_VERSION: ${{ env.APP_VERSION }}
         run: |
           echo "Compiling final production stage image..."
-          docker build --target production -t ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }} .
+          docker build --target production -t "$ECR_URL:$APP_VERSION" .
           
           echo "Pushing verified clean asset to ECR..."
-          docker push ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}
+          docker push "$ECR_URL:$APP_VERSION"
 
   # Job 5: Deploy (Update Live Lambda Service)
   # Only executes when code lands securely on the main branch.
@@ -318,10 +331,12 @@ jobs:
 
       - name: OpenTofu Apply (Full Rollout)
         working-directory: terraform/app
+        env:
+          IMAGE_TAG: ${{ needs.build_verify_push.outputs.version }}
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
           tofu init -backend-config="bucket=ml-engineer-exam-tf-state-${ACCOUNT_ID}"
-          
+
           echo "=== EXECUTING FINAL STATE SYNCHRONIZATION ==="
           # Injecting the verified image tag straight from the build output macro!
-          tofu apply -var="container_image_tag=${{ needs.build_verify_push.outputs.version }}" -auto-approve
+          tofu apply -var="container_image_tag=$IMAGE_TAG" -auto-approve
