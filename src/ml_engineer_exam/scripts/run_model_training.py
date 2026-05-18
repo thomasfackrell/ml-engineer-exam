@@ -22,6 +22,7 @@ def main():
     model_name = args.model_name
 
     config = MLConfig(model_name=model_name)
+    config.initialize_directories()
 
     housing_model = HousingModel(model_type=config.model_name)
 

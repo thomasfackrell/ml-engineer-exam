@@ -13,18 +13,7 @@ dependencies = [
     "joblib>=1.5.3",       # Explicitly required for model loading
     "mlflow>=2.11.0",
     "protobuf==6.33.5",  # Updated for Trivy SCA scan
-    "wheel"
-]
-
-[project.optional-dependencies]
-# DEVELOPMENT DEPENDENCIES (Excluded from the Docker Image)
-dev = [
-    "pytest>=8.0.0",
-    "pytest-cov>=4.1.0",
-    "ruff>=0.4.0",         # Required for your CI Linting step
-    "boto3>=1.34.0",       # Helpful for local AWS simulation
-    "commitizen>=3.27.0",  # Added for conventional commits & versioning
-    "pre-commit>=3.7.0"    # Added for local Git hook enforcement
+    "wheel",
 ]
 
 [project.scripts]
@@ -63,3 +52,15 @@ lint.ignore = ["E501","N806","N803"]
 [tool.ruff.lint.isort]
 known-first-party = ["ml_engineer_exam"]
 combine-as-imports = true
+
+# MODERN UV DEPENDENCY GROUP (Used for local test script exports & CI lint/test gates)
+[dependency-groups]
+dev = [
+    "awslambdaric>=4.0.0",
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.4.0",          # Required for your CI Linting step
+    "boto3>=1.34.0",        # Helpful for local AWS simulation
+    "commitizen>=3.27.0",   # Added for conventional commits & versioning
+    "pre-commit>=3.7.0"     # Added for local Git hook enforcement
+]

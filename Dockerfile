@@ -15,14 +15,14 @@ ENV SETUPTOOLS_USE_DISTUTILS=local
 RUN pip install --no-cache-dir "setuptools>=69.0.0" wheel
 
 # 3. Copy only the dependency definitions first (optimization for layer caching)
-COPY pyproject.toml uv.lock ./
+COPY requirements.txt pyproject.toml uv.lock ./
 
 # 4. SURGICAL COPY: Only the core package
 # We copy the specific package folder instead of the whole 'src' directory
 COPY src/ml_engineer_exam ./src/ml_engineer_exam
 
 # 5. Use uv sync to honor the lockfile versions explicitly
-RUN uv sync --system --no-dev
+RUN uv pip sync requirements.txt --system
 
 # 6. COPY: Model artifacts
 # We preserve the 'data/models' pathing so MLDeployConfig can find them
@@ -37,6 +37,9 @@ ENV APP_NAME=ml_engineer_exam
 # We create 'appuser' natively for simplicity and security
 RUN echo "appuser:x:1001:1001::/home/appuser:/bin/bash" >> /etc/passwd && \
     echo "appuser:x:1001:" >> /etc/group
+
+    # Ensure appuser owns the runtime paths and python global libraries
+RUN chown -R appuser:appuser ${LAMBDA_TASK_ROOT} /var/lang/
 
 USER appuser
 

@@ -17,17 +17,29 @@ class MLConfig(BaseModel):
     def repo_dir(self) -> Path:
         return self.root_path / f"app/{self.app_name.replace('_', '-')}"
 
-    data_dir: Path = root_path / f"data/{app_name}"
-    data_dir.mkdir(parents=True, exist_ok=True)
+    @property
+    def data_dir(self) -> Path:
+        return self.root_path / f"data/{self.app_name}"
 
-    log_dir: Path = root_path / f"log/{app_name}"
-    log_dir.mkdir(parents=True, exist_ok=True)
+    @property
+    def log_dir(self) -> Path:
+        return self.root_path / f"log/{self.app_name}"
 
-    input_data_dir: Path = data_dir / "input_data"
-    input_data_dir.mkdir(parents=True, exist_ok=True)
+    @property
+    def input_data_dir(self) -> Path:
+        return self.data_dir / "input_data"
 
-    model_dir: Path = data_dir / "models"
-    model_dir.mkdir(parents=True, exist_ok=True)
+    @property
+    def model_dir(self) -> Path:
+        return self.data_dir / "models"
+
+    def initialize_directories(self):
+        """Creates required directories for research/training mode."""
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.input_data_dir.mkdir(parents=True, exist_ok=True)
+        self.model_dir.mkdir(parents=True, exist_ok=True)
+        self.prediction_dir.mkdir(parents=True, exist_ok=True)
 
     @computed_field
     @property
@@ -40,8 +52,9 @@ class MLConfig(BaseModel):
         )
         return model_path
 
-    prediction_dir: Path = data_dir / "predictions"
-    prediction_dir.mkdir(parents=True, exist_ok=True)
+    @property
+    def prediction_dir(self) -> Path:
+        return self.data_dir / "predictions"
 
     random_state: int = 42
     learning_rate: float = None

@@ -28,9 +28,10 @@ docker rm -f $CONTAINER_NAME 2>/dev/null
 echo "Starting container on port $PORT..."
 docker run -d \
   --name $CONTAINER_NAME \
+  --user 1001 \
   -p $PORT:8080 \
   --add-host=host.docker.internal:host-gateway \
-  -e ENABLE_MLFLOW=true \
+  -e ENABLE_MLFLOW=false \
   -e MLFLOW_TRACKING_URI=http://host.docker.internal:$MLFLOW_PORT \
   -e ROOT_PATH=/var/task \
   -e APP_NAME=ml_engineer_exam \

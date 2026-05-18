@@ -16,6 +16,7 @@ ENABLE_MLFLOW = os.getenv("ENABLE_MLFLOW", "false").lower() == "true"
 MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
 
 # --- Global Scope: Declarations ---
+# Only use MLDeployConfig to avoid research-mode side effects
 config = MLDeployConfig()
 MODEL_CACHE = {}
 SCALER = None

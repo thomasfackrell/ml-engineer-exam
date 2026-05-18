@@ -33,6 +33,8 @@ def main():
     model_name = args.model_name
 
     config = MLConfig(model_name=model_name)
+    config.initialize_directories()
+
     input_info = json.loads(args.input_data)
     data = pd.DataFrame([input_info])
 
