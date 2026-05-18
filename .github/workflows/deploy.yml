@@ -324,7 +324,6 @@ jobs:
       github.ref == 'refs/heads/main' ||
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '/deploy-preview'))
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     outputs:
       api_url: ${{ steps.tofu_apply.outputs.api_url }}
     steps:
