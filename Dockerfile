@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir "setuptools>=69.0.0" wheel
 # Copy production-only dependencies
 COPY requirements.txt pyproject.toml uv.lock ./
 COPY src/ml_engineer_exam ./src/ml_engineer_exam
-RUN uv pip install requirements.txt --system
+RUN uv pip install --system -r requirements.txt
 
 # ==========================================
 # STAGE 2: Test Environment (With awslambdaric)
