@@ -373,7 +373,10 @@ jobs:
     name: "Smoke Test: Production API"
     needs: [deploy]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: |
+      github.ref == 'refs/heads/main' ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '/deploy-preview'))
+    
     steps:
       - name: Checkout
         uses: actions/checkout@v4.1.7
