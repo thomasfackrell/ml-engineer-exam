@@ -4,7 +4,7 @@ This document provides a comprehensive blueprint of the production serverless in
 
 ---
 
-## 1. System Architecture Blueprint 
+## 1. System Architecture Blueprint
 
 The production scoring engine is designed around a decoupled, serverless container pattern built to maintain elastic scale, zero idle compute costs, and a secure operational perimeter.
 
