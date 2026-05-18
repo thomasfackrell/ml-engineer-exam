@@ -42,7 +42,7 @@ jobs:
         uses: astral-sh/setup-uv@v3
 
       - name: Install Development Dependencies
-        run: uv sync --extra dev
+        run: uv sync --all-groups
 
       - name: Run Unit Tests (Mocked)
         run: uv run pytest tests/unit -v --junitxml=unit-test-report.xml
