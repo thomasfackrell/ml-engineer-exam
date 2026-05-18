@@ -157,7 +157,10 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      # SELF-HEALING UPDATE: Reviews S3 layout, automatically falls back to run bootstrap if missing
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+
+      # INLINE SELF-HEALING BOOTSTRAP: Inline compilation eliminates cross-workflow token permission dependencies
       - name: Verify Backend State Bucket and Auto-Bootstrap
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
@@ -166,16 +169,17 @@ jobs:
           if aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
             echo "✅ Remote backend infrastructure discovered. Proceeding directly."
           else
-            echo "⚠️ Remote OpenTofu backend bucket not found! Bootstrapping layout storage targets..."
-            gh workflow run "Manual: Bootstrap TF Backend" --ref ${{ github.ref }}
-            echo "Pausing for 60s to allow S3 resource propagation and table locking maps to settle..."
-            sleep 60
+            echo "⚠️ Remote OpenTofu backend bucket not found! Executing inline bootstrap process..."
+            
+            # Navigate to your bootstrap directory and run your code directly here
+            cd terraform/bootstrap
+            tofu init
+            tofu apply -auto-approve
+            cd ../..
+            
+            echo "Pausing for 30s to allow S3 resource propagation and table locking maps to settle..."
+            sleep 30
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
 
       - name: OpenTofu Execution Engine
         working-directory: terraform/app
