@@ -6,6 +6,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Set the Lambda task root
 WORKDIR ${LAMBDA_TASK_ROOT}
 
+# Update OS packages to patch glibc vulnerabilities (CVE-2026-4046)
+RUN dnf update -y --releasever=latest glibc glibc-common glibc-langpack-en glibc-minimal-langpack && \
+    dnf clean all
+
 # 2. Compatibility Layer for Python 3.12 (MLflow/Protobuf legacy support)
 ENV SETUPTOOLS_USE_DISTUTILS=local
 RUN pip install --no-cache-dir "setuptools>=69.0.0" wheel
