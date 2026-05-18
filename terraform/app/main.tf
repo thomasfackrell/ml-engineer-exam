@@ -50,7 +50,7 @@ resource "aws_lambda_function" "inference_service" {
   # Image URI is parameterized to allow specific Git SHA tagging in CI/CD
   image_uri = "${aws_ecr_repository.app_repo.repository_url}:${var.container_image_tag}"
 
-  timeout     = 30
+  timeout     = 45
   memory_size = 1024 # Allocated to handle Random Forest model and MLflow overhead
 
   kms_key_arn = aws_kms_key.lambda_key.arn

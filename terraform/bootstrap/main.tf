@@ -17,7 +17,7 @@ resource "aws_s3_bucket" "terraform_state" {
   
   # Prevent accidental deletion of this bucket via Terraform
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false  # For easy teardown. Would do true in production.
   }
 }
 

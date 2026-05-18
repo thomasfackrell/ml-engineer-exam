@@ -1,0 +1,84 @@
+name: "Infra: Force Teardown (Absolute Decommission)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_destruction:
+        description: 'Type "DESTROY" to authorize absolute teardown including backend state storage'
+        required: true
+        default: 'PROMPT_GUARD'
+
+jobs:
+  purge_entire_cloud_footprint:
+    name: "Absolute Purge"
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event.inputs.confirm_destruction == 'DESTROY'
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4.1.7
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Setup OpenTofu Execution Engine
+        uses: opentofu/setup-opentofu@v1
+
+      # =========================================================================
+      # STEP 1: DESTROY CORE APPLICATION WORKSPACE (WHILE BACKEND IS ALIVE)
+      # =========================================================================
+       Kakao: "1. TEARING DOWN INFRASTRUCTURE ROUTING AND INFERENCE COMPUTE"
+      - name: Clean Core Application Workspace
+        working-directory: terraform/app
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+          BUCKET_NAME="ml-engineer-exam-tf-state-${ACCOUNT_ID}"
+          
+          # Initialize using the live remote S3 backend
+          tofu init -backend-config="bucket=${BUCKET_NAME}"
+          
+          # Wipe out API GW, Lambda, ECR, and encryption keys cleanly
+          tofu destroy -auto-approve
+
+      # =========================================================================
+      # STEP 2: BYPASS BOOTSTRAP LIFECYCLE LOCKS & PURGE REPOSITORIES VIA AWS CLI
+      # =========================================================================
+      - name: Force Purge S3 Versioned Objects and DynamoDB Table Logs
+        run: |
+          echo "=== 2. BYPASSING REMOTE STATE CIRCULAR DEPENDENCIES ==="
+          ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+          BUCKET_NAME="ml-engineer-exam-tf-state-${ACCOUNT_ID}"
+          LOCK_TABLE="ml-engineer-exam-tflock"
+          
+          if aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
+            echo "Emptying versioned bucket objects to guarantee S3 allows clean deletion..."
+            # Query and compile every unique object version signature 
+            OBJECT_VERSIONS=$(aws s3api list-object-versions --bucket "$BUCKET_NAME" --query '{Objects: Versions[].{Key: Key, VersionId: VersionId}}' --output json)
+            if [ "$(echo "$OBJECT_VERSIONS" | jq '.Objects')" != "null" ]; then
+               aws s3api delete-objects --bucket "$BUCKET_NAME" --delete "$OBJECT_VERSIONS" || true
+            fi
+            
+            # Query and compile delete markers left behind by version tracking updates
+            DELETE_MARKERS=$(aws s3api list-object-versions --bucket "$BUCKET_NAME" --query '{Objects: DeleteMarkers[].{Key: Key, VersionId: VersionId}}' --output json)
+            if [ "$(echo "$DELETE_MARKERS" | jq '.Objects')" != "null" ]; then
+               aws s3api delete-objects --bucket "$BUCKET_NAME" --delete "$DELETE_MARKERS" || true
+            fi
+            
+            echo "Deleting remote state bucket storage: $BUCKET_NAME"
+            aws s3 rm "s3://$BUCKET_NAME" --recursive || true
+            aws s3api delete-bucket --bucket "$BUCKET_NAME"
+          fi
+          
+          if aws dynamodb describe-table --table-name "$LOCK_TABLE" >/dev/null 2>&1; then
+            echo "Deleting state locking database table: $LOCK_TABLE"
+            aws dynamodb delete-table --table-name "$LOCK_TABLE"
+            
+            echo "Waiting for table deletion confirmation loop..."
+            aws dynamodb wait table-not-exists --table-name "$LOCK_TABLE"
+          fi
+          
+          echo "✅ All structural trace footprints and backend metadata maps completely eliminated from cloud fabric."
