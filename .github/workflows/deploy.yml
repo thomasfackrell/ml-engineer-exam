@@ -204,19 +204,26 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build Local Image
+      # STEP A: Create the base requirements.txt from lockfile
+      - name: Export Lockfile context
+        run: |
+          uv export --format requirements-txt --no-dev --no-hashes --output-file requirements.txt
+
+      # STEP B: Build the test image stage (Includes awslambdaric for emulator validation)
+      - name: Build Local Test Image Target
         uses: docker/build-push-action@v5.3.0
         with:
           context: .
-          load: true # Loads image into local Docker daemon for testing
-          tags: ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}
+          load: true
+          target: test-env
+          tags: ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}-test
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Trivy Container Image Scan
+      - name: Trivy Container Image Scan (Scan the test target for fast security coverage)
         uses: aquasecurity/trivy-action@0.35.0
         with:
-          image-ref: '${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}'
+          image-ref: '${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}-test'
           severity: 'HIGH,CRITICAL'
           format: 'table'
           output: 'trivy-image.txt'
@@ -237,18 +244,17 @@ jobs:
           path: trivy-image.txt
           retention-days: 14
 
+      # STEP C: Run Smoke tests against the test target
       - name: Artifact Smoke Test (System Verification)
         run: |
           echo "Starting container for artifact verification..."
           docker run -d --name smoke-test -p 9000:8080 \
             -e ROOT_PATH=/var/task \
             -e APP_NAME=ml_engineer_exam \
-            ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}
+            ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}-test
           
-          # Allow time for lazy-loading and emulator boot
           sleep 10
           
-          # Hit the RIE endpoint 3 times, passing a different model target in the payload!
           uv run python tests/verify_inference.py --url http://localhost:9000/2015-03-31/functions/function/invocations --model linear
           uv run python tests/verify_inference.py --url http://localhost:9000/2015-03-31/functions/function/invocations --model ridge
           uv run python tests/verify_inference.py --url http://localhost:9000/2015-03-31/functions/function/invocations --model random_forest
@@ -256,8 +262,13 @@ jobs:
           echo "All model smoke tests passed inside emulator. Cleaning up..."
           docker rm -f smoke-test
 
-      - name: Push Verified Image to ECR
+      # STEP D: Tests passed! Now compile the pristine production image target and push it
+      - name: Build & Push Production Image to ECR
         run: |
+          echo "Compiling final production stage image..."
+          docker build --target production -t ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }} .
+          
+          echo "Pushing verified clean asset to ECR..."
           docker push ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}
 
   # Job 5: Deploy (Update Lambda) (ONLY runs on Merge to Main)

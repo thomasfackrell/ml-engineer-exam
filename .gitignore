@@ -208,3 +208,5 @@ __marimo__/
 
 mlflow.db
 TODO.md
+# Ignore temporary build requirements
+requirements.txt

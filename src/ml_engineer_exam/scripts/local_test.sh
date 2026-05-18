@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Configuration
 IMAGE_NAME="ml-engineer-exam-inference"
@@ -9,7 +10,6 @@ MLFLOW_PORT=5000
 # 1. Start MLflow with Host Header Validation Disabled
 if ! lsof -i:$MLFLOW_PORT -t >/dev/null; then
     echo "Starting MLflow server..."
-    # This environment variable MUST be exported to be seen by the server process
     export MLFLOW_SERVER_HOST_HEADER_VALIDATION=false
     uv run mlflow server --host 0.0.0.0 --port $MLFLOW_PORT --dev &
     sleep 5 
@@ -17,14 +17,18 @@ else
     echo "MLflow server already running."
 fi
 
-# 2. Build the Docker Image
-echo "Building Docker image: $IMAGE_NAME..."
-docker build -t $IMAGE_NAME .
+# 2. Export clean production lock context
+echo "Exporting lockfile to requirements.txt..."
+uv export --format requirements-txt --no-dev --no-hashes --output-file requirements.txt
 
-# 3. Clean up any existing container
+# 3. Build the Testing Stage Image
+echo "Building Docker image targeted to test-env..."
+docker build --target test-env -t $IMAGE_NAME .
+
+# 4. Clean up any existing container
 docker rm -f $CONTAINER_NAME 2>/dev/null
 
-# 4. Run the Container
+# 5. Run the Container
 echo "Starting container on port $PORT..."
 docker run -d \
   --name $CONTAINER_NAME \
@@ -41,7 +45,10 @@ echo "--------------------------------------------------------"
 echo "Setup Complete! Your Lambda is ready for testing."
 echo "--------------------------------------------------------"
 
-# 5. High-Precision Test Payload
+# Allow time for container initialization
+sleep 3
+
+# 6. High-Precision Test Payload
 echo "Running high-precision inference test..."
 curl -XPOST "http://localhost:$PORT/2015-03-31/functions/function/invocations" \
   -d '{
