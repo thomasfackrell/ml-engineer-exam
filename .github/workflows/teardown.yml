@@ -1,4 +1,4 @@
-name: Force Teardown
+name: "Infra: Force Teardown"
 
 on:
   workflow_dispatch:
@@ -31,7 +31,6 @@ jobs:
       # =========================================================================
       # STEP 1: DESTROY CORE APPLICATION WORKSPACE (WHILE BACKEND IS ALIVE)
       # =========================================================================
-       Kakao: "1. TEARING DOWN INFRASTRUCTURE ROUTING AND INFERENCE COMPUTE"
       - name: Clean Core Application Workspace
         working-directory: terraform/app
         run: |
