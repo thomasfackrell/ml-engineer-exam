@@ -25,35 +25,31 @@ The scoring engine uses a decoupled, serverless container architecture designed 
 ## Architecture Overview
 
 ```text
-              [ PUBLIC CLOUD PERIMETER ]
-                          │
-
-[ Client HTTP POST ]
-          │
-          ▼
-[ Amazon API Gateway v2 ]
-          │
-      (VPC Link)
-          │
-          ▼
-      [ Secure VPC ]
-          │
-          ▼
-[ AWS Lambda Compute Pool ]
-          │
-    (Global Cache Layer)
-          │
-          ▼
-
-┌──────────────────────────┐
-│ scaler.joblib            │
-├──────────────────────────┤
-│ linear.joblib            │
-├──────────────────────────┤
-│ ridge.joblib             │
-├──────────────────────────┤
-│ random_forest.joblib     │
-└──────────────────────────┘
+Client HTTP POST
+        │
+        ▼
+┌─────────────────────────────┐
+│ Amazon API Gateway v2       │
+│ POST /predict               │
+└─────────────────────────────┘
+        │
+        │ (VPC Link / Private Routing + JWT Auth [Future State])
+        ▼
+┌─────────────────────────────┐
+│ AWS Lambda Container        │
+│ Inference Handler           │
+└─────────────────────────────┘
+        │
+        │ Lazy-loaded global cache
+        ▼
+┌─────────────────────────────┐
+│ Cached Model Artifacts      │
+├─────────────────────────────┤
+│ scaler.joblib               │
+│ linear.joblib               │
+│ ridge.joblib                │
+│ random_forest.joblib        │
+└─────────────────────────────┘
 ```
 
 ## Request Flow Components
