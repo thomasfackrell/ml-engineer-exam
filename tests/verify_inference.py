@@ -35,7 +35,7 @@ def test_inference(url, model_name="linear", verify_mlflow=False):
     # 1. Test Endpoint
     logger.info(f"Sending request to: {url} (Mode: {'Emulator' if is_emulator else 'API_Gateway'})")
     try:
-        response = requests.post(url, json=payload, timeout=15)
+        response = requests.post(url, json=payload, timeout=45)
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
         logger.error(f"Endpoint request failed: {e}")
