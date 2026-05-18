@@ -34,18 +34,26 @@ jobs:
     if: github.event_name != 'issue_comment'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout (Bypassing LFS)
         uses: actions/checkout@v4.1.7
         with:
-          lfs: true # Critical for downloading the .joblib models
+          lfs: false 
 
-      - name: Cache Git LFS files
-        uses: actions/cache@v4
-        with:
-          path: .git/lfs
-          key: ${{ runner.os }}-lfs-${{ hashFiles('.gitattributes') }}
-          restore-keys: |
-            ${{ runner.os }}-lfs-
+      - name: Initialize Git skipping LFS
+        run: |
+          git lfs install --skip-smudge
+          git checkout HEAD
+
+      - name: Download Models from Hugging Face
+        run: |
+          echo "Creating data/models/ directory structure..."
+          mkdir -p data/models
+          
+          echo "Downloading model files directly into path format..."
+          curl -L -o data/models/ridge.joblib "https://huggingface.co/majortom108/mle-exam-ridge/resolve/main/ridge.joblib"
+          curl -L -o data/models/linear.joblib "https://huggingface.co/majortom108/mle-exam-linear/resolve/main/linear.joblib"
+          curl -L -o data/models/scaler.joblib "https://huggingface.co/majortom108/mle-exam-scaler/resolve/main/scaler.joblib"
+          curl -L -o data/models/random_forest.joblib "https://huggingface.co/majortom108/mle-exam-rf/resolve/main/random_forest.joblib"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -75,18 +83,15 @@ jobs:
     if: github.event_name != 'issue_comment'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout (Bypassing LFS)
         uses: actions/checkout@v4.1.7
         with:
-          lfs: true
-      
-      - name: Cache Git LFS files
-        uses: actions/cache@v4
-        with:
-          path: .git/lfs
-          key: ${{ runner.os }}-lfs-${{ hashFiles('.gitattributes') }}
-          restore-keys: |
-            ${{ runner.os }}-lfs-
+          lfs: false
+
+      - name: Initialize Git skipping LFS
+        run: |
+          git lfs install --skip-smudge
+          git checkout HEAD
 
       - name: Semgrep SAST (Code Scan)
         # ASSESSMENT OVERRIDE: Allowed to log warnings without breaking review apps
@@ -202,19 +207,27 @@ jobs:
     outputs:
       version: ${{ steps.version_env.outputs.VERSION_OUT }}
     steps:
-      - name: Checkout
+      - name: Checkout (Bypassing LFS)
         uses: actions/checkout@v4.1.7
         with:
-          lfs: true
+          lfs: false
           fetch-depth: 0 
 
-      - name: Cache Git LFS files
-        uses: actions/cache@v4
-        with:
-          path: .git/lfs
-          key: ${{ runner.os }}-lfs-${{ hashFiles('.gitattributes') }}
-          restore-keys: |
-            ${{ runner.os }}-lfs-
+      - name: Initialize Git skipping LFS
+        run: |
+          git lfs install --skip-smudge
+          git checkout HEAD
+
+      - name: Download Models from Hugging Face for Container Context
+        run: |
+          echo "Creating data/models/ directory structure..."
+          mkdir -p data/models
+          
+          echo "Downloading model files directly into path format..."
+          curl -L -o data/models/ridge.joblib "https://huggingface.co/majortom108/mle-exam-ridge/resolve/main/ridge.joblib"
+          curl -L -o data/models/linear.joblib "https://huggingface.co/majortom108/mle-exam-linear/resolve/main/linear.joblib"
+          curl -L -o data/models/scaler.joblib "https://huggingface.co/majortom108/mle-exam-scaler/resolve/main/scaler.joblib"
+          curl -L -o data/models/random_forest.joblib "https://huggingface.co/majortom108/mle-exam-rf/resolve/main/random_forest.joblib"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
