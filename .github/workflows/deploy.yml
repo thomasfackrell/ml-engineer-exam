@@ -34,10 +34,26 @@ jobs:
     if: github.event_name != 'issue_comment'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout (Bypassing LFS)
         uses: actions/checkout@v4.1.7
         with:
-          lfs: true # Critical for downloading the .joblib models
+          lfs: false 
+
+      - name: Initialize Git skipping LFS
+        run: |
+          git lfs install --skip-smudge
+          git checkout HEAD
+
+      - name: Download Models from Hugging Face
+        run: |
+          echo "Creating data/models/ directory structure..."
+          mkdir -p data/models
+          
+          echo "Downloading model files directly into path format..."
+          curl -L -o data/models/ridge.joblib "https://huggingface.co/majortom108/mle-exam-ridge/resolve/main/ridge.joblib"
+          curl -L -o data/models/linear.joblib "https://huggingface.co/majortom108/mle-exam-linear/resolve/main/linear.joblib"
+          curl -L -o data/models/scaler.joblib "https://huggingface.co/majortom108/mle-exam-scaler/resolve/main/scaler.joblib"
+          curl -L -o data/models/random_forest.joblib "https://huggingface.co/majortom108/mle-exam-rf/resolve/main/random_forest.joblib"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -67,10 +83,15 @@ jobs:
     if: github.event_name != 'issue_comment'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout (Bypassing LFS)
         uses: actions/checkout@v4.1.7
         with:
-          lfs: true 
+          lfs: false
+
+      - name: Initialize Git skipping LFS
+        run: |
+          git lfs install --skip-smudge
+          git checkout HEAD
 
       - name: Semgrep SAST (Code Scan)
         # ASSESSMENT OVERRIDE: Allowed to log warnings without breaking review apps
@@ -136,7 +157,10 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      # SELF-HEALING UPDATE: Reviews S3 layout, automatically falls back to run bootstrap if missing
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+
+      # INLINE SELF-HEALING BOOTSTRAP: Inline compilation eliminates cross-workflow token permission dependencies
       - name: Verify Backend State Bucket and Auto-Bootstrap
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
@@ -145,16 +169,17 @@ jobs:
           if aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
             echo "✅ Remote backend infrastructure discovered. Proceeding directly."
           else
-            echo "⚠️ Remote OpenTofu backend bucket not found! Bootstrapping layout storage targets..."
-            gh workflow run "Manual: Bootstrap TF Backend" --ref ${{ github.ref }}
-            echo "Pausing for 60s to allow S3 resource propagation and table locking maps to settle..."
-            sleep 60
+            echo "⚠️ Remote OpenTofu backend bucket not found! Executing inline bootstrap process..."
+            
+            # Navigate to your bootstrap directory and run your code directly here
+            cd terraform/bootstrap
+            tofu init
+            tofu apply -auto-approve
+            cd ../..
+            
+            echo "Pausing for 30s to allow S3 resource propagation and table locking maps to settle..."
+            sleep 30
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
 
       - name: OpenTofu Execution Engine
         working-directory: terraform/app
@@ -186,11 +211,27 @@ jobs:
     outputs:
       version: ${{ steps.version_env.outputs.VERSION_OUT }}
     steps:
-      - name: Checkout
+      - name: Checkout (Bypassing LFS)
         uses: actions/checkout@v4.1.7
         with:
-          lfs: true
+          lfs: false
           fetch-depth: 0 
+
+      - name: Initialize Git skipping LFS
+        run: |
+          git lfs install --skip-smudge
+          git checkout HEAD
+
+      - name: Download Models from Hugging Face for Container Context
+        run: |
+          echo "Creating data/models/ directory structure..."
+          mkdir -p data/models
+          
+          echo "Downloading model files directly into path format..."
+          curl -L -o data/models/ridge.joblib "https://huggingface.co/majortom108/mle-exam-ridge/resolve/main/ridge.joblib"
+          curl -L -o data/models/linear.joblib "https://huggingface.co/majortom108/mle-exam-linear/resolve/main/linear.joblib"
+          curl -L -o data/models/scaler.joblib "https://huggingface.co/majortom108/mle-exam-scaler/resolve/main/scaler.joblib"
+          curl -L -o data/models/random_forest.joblib "https://huggingface.co/majortom108/mle-exam-rf/resolve/main/random_forest.joblib"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -373,7 +414,10 @@ jobs:
     name: "Smoke Test: Production API"
     needs: [deploy]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: |
+      github.ref == 'refs/heads/main' ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '/deploy-preview'))
+    
     steps:
       - name: Checkout
         uses: actions/checkout@v4.1.7
