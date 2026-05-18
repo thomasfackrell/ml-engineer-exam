@@ -1,6 +1,6 @@
 [project]
 name = "ml-engineer-exam"
-version = "0.3.2"
+version = "0.3.3"
 description = "A sample project for ML engineering exam for Milliman IntelliScript."
 requires-python = ">=3.12"
 # DEPLOYMENT DEPENDENCIES (The "Weight" of your Lambda)
