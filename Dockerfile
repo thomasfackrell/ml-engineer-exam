@@ -31,9 +31,10 @@ ENV ROOT_PATH=${LAMBDA_TASK_ROOT}
 ENV APP_NAME=ml_engineer_exam
 
 # 8. SECURITY: Use a non-root user for execution
-# Lambda RIE (local) and production Lambda support non-root users
-# Note: Amazon Linux 2023 uses 'adduser' and requires explicit home directory creation if needed
-RUN adduser -u 1001 appuser
+# We create 'appuser' natively for simplicity and security
+RUN echo "appuser:x:1001:1001::/home/appuser:/bin/bash" >> /etc/passwd && \
+    echo "appuser:x:1001:" >> /etc/group
+
 USER appuser
 
 CMD [ "ml_engineer_exam.handler.lambda_handler" ]
