@@ -315,6 +315,8 @@ jobs:
     needs: [infrastructure, build_verify_push]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    outputs:
+      api_url: ${{ steps.tofu_apply.outputs.api_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4.1.7
@@ -325,11 +327,12 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-      
+
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
 
       - name: OpenTofu Apply (Full Rollout)
+        id: tofu_apply
         working-directory: terraform/app
         env:
           IMAGE_TAG: ${{ needs.build_verify_push.outputs.version }}
@@ -340,3 +343,31 @@ jobs:
           echo "=== EXECUTING FINAL STATE SYNCHRONIZATION ==="
           # Injecting the verified image tag straight from the build output macro!
           tofu apply -var="container_image_tag=$IMAGE_TAG" -auto-approve
+
+          # Capture the API URL for the post-deploy smoke test
+          API_URL=$(tofu output -raw api_url)
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+
+  # Job 6: Final Production Verification (Synthetic Monitoring)
+  smoke_test_production:
+    name: "Smoke Test: Production API"
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install Dependencies
+        run: uv sync --all-groups
+
+      - name: Run Production Smoke Test
+        env:
+          API_URL: ${{ needs.deploy.outputs.api_url }}
+        run: |
+          # Use the hardened post_deploy.sh script to verify the live service
+          chmod +x ./src/ml_engineer_exam/scripts/post_deploy.sh
+          ./src/ml_engineer_exam/scripts/post_deploy.sh "$API_URL"
