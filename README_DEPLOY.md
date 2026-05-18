@@ -1,17 +1,4 @@
-You are completely correct. Your sharp analysis catches a structural contradiction between the workflow triggers and the OpenTofu execution environment.
-
-The markdown draft proposed a friction-free `/deploy-preview` path. However, looking objectively at the actual configuration you designed, **Method A will completely fail to provision resources** for two explicit reasons:
-
-1. **Job-Level Block**: The `deploy` job contains the literal safety guard: `if: github.ref == 'refs/heads/main'`. When a reviewer comments on a Pull Request, the `github.ref` points to the PR branch context (e.g., `refs/pull/1/merge`), meaning the actual `deploy` job **will skip entirely and never run**.
-2. **Step-Level Block**: Even if they use a branch named `main` inside their fork, the `infrastructure` job blocks active resource modifications using the explicit shell guard: `if [ "$GITHUB_REF" = "refs/heads/main" ]; then ... else tofu plan; fi`. On a PR, it will only ever execute a read-only `tofu plan`.
-
-Therefore, to spin up your AWS application footprint, your reviewers cannot rely on PR comment overrides. **A merge directly into their forked `main` branch is the only path that unlocks the live infrastructure allocation engine (`tofu apply`)**.
-
-Here is the revised, completely accurate **`DEPLOYREADME.md`** reflecting the exact reality of your architecture.
-
----
-
-# DEPLOYREADME.md
+# README_DEPLOY.md
 
 This document provides a comprehensive blueprint of the production serverless inference scoring architecture designed and implemented for the Milliman IntelliScript Machine Learning Engineer assessment. It outlines the structural framework, package distribution, Infrastructure as Code layout, and multi-stage testing pipelines.
 
@@ -168,7 +155,7 @@ bash src/ml_engineer_exam/scripts/post_deploy.sh https://v281484300.execute-api.
 
 When evaluating the response times of the endpoint, observe two distinct operational states:
 
-* **The Cold Start Window (~60 seconds)**: The very first request hit landing on a newly deployed container instance will observe an execution pause of **approximately 60 seconds**. This is expected behavior by architectural design: during container boot initialization, the handler must spin up the internal Python workspace, read the structural preprocessing configurations (`scaler.joblib`), and completely load the weight matrices for **all three model variants** simultaneously into memory.
+* **The Cold Start Window (~45 seconds)**: The very first request hit landing on a newly deployed container instance will observe an execution pause of **approximately 45 seconds**. This is expected behavior by architectural design: during container boot initialization, the handler must spin up the internal Python workspace, read the structural preprocessing configurations (`scaler.joblib`), and completely load the weight matrices for **all three model variants** simultaneously into memory.
 * **The Warm State Optimization (<100ms)**: Once the initialization sequence finishes and the container environment registers as warm, **all subsequent request evaluations operate at high speed**. Because the preprocessor scaling arrays and target model references sit fully cached inside global container RAM boundaries, raw data transformations bypass disk storage access constraints completely, enabling near-instantaneous live mathematical predictions.
 
 ---

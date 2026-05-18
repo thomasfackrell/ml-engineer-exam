@@ -388,8 +388,5 @@ jobs:
         env:
           API_URL: ${{ needs.deploy.outputs.api_url }}
         run: |
-          echo "Allowing ~60s for Lambda initialization workspace loop (Lazy-loading all 3 models)..."
-          sleep 60
-          
           chmod +x ./src/ml_engineer_exam/scripts/post_deploy.sh
           ./src/ml_engineer_exam/scripts/post_deploy.sh "$API_URL"

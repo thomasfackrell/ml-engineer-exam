@@ -34,13 +34,47 @@ def test_inference(url, model_name="linear", verify_mlflow=False):
 
     # 1. Test Endpoint
     logger.info(f"Sending request to: {url} (Mode: {'Emulator' if is_emulator else 'API_Gateway'})")
-    try:
-        response = requests.post(url, json=payload, timeout=45)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Endpoint request failed: {e}")
+
+    max_retries = 3
+    retry_delay = 5  # seconds to wait between retries
+    response = None
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.post(url, json=payload, timeout=45)
+            response.raise_for_status()
+            # If successful, break out of the retry loop
+            break
+        except requests.exceptions.HTTPError as e:
+            # Check if it's specifically a 503 error that we want to retry
+            if response is not None and response.status_code == 503:
+                logger.warning(
+                    f"⚠️ Attempt {attempt}/{max_retries} failed with 503 Service Unavailable."
+                )
+                if attempt < max_retries:
+                    logger.info(f"Waiting {retry_delay} seconds before retrying...")
+                    import time
+
+                    time.sleep(retry_delay)
+                    continue
+
+            # For any other HTTP errors (400, 500, etc.), fail immediately
+            logger.error(f"Endpoint request failed with non-retryable error: {e}")
+            if response is not None:
+                logger.error(f"Response: {response.text}")
+            sys.exit(1)
+
+        except requests.exceptions.RequestException as e:
+            # Handle connection errors, timeouts, etc.
+            logger.error(f"Endpoint request encountered a network failure: {e}")
+            sys.exit(1)
+    else:
+        # This block executes only if the loop finishes all iterations without hitting a 'break'
+        logger.critical(
+            f"❌ All {max_retries} retry attempts exhausted. Endpoint is persistently unavailable. Wait until Lambda finishes cold start."
+        )
         if response is not None:
-            logger.error(f"Response: {response.text}")
+            logger.error(f"Final Response text: {response.text}")
         sys.exit(1)
 
     result = response.json()
