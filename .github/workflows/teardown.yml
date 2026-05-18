@@ -1,4 +1,4 @@
-name: "Infra: Force Teardown (Absolute Decommission)"
+name: Force Teardown
 
 on:
   workflow_dispatch:
