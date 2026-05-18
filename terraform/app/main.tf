@@ -119,3 +119,9 @@ resource "aws_lambda_permission" "apigw_lambda" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.inference_api.execution_arn}/*/*"
 }
+
+# 8. Output for easy CI/CD consumption
+output "api_url" {
+  value       = "${aws_apigatewayv2_api.inference_api.api_endpoint}/predict"
+  description = "The URL of the production inference endpoint"
+}
