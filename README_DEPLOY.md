@@ -126,7 +126,7 @@ Navigate to the **Settings** tab of your forked repository, click **Secrets and 
 
 ### Step 2: Trigger the Self-Healing Deployment Execution Loop
 
-The automated CI/CD pipeline contains a **built-in self-healing loop**. On its first initialization, it automatically audits your AWS account configuration; if the remote OpenTofu storage layer is missing, it will programmatically invoke the bootstrap sequence internally, pausing for 60 seconds to safely provision your backend bucket and DynamoDB locking tables before processing the application workspace.
+The automated CI/CD pipeline contains a **built-in self-healing loop**. On its first initialization, it automatically audits your AWS account configuration; if the remote OpenTofu storage layer is missing, it will programmatically invoke the bootstrap sequence internally, pausing for 45 seconds to safely provision your backend bucket and DynamoDB locking tables before processing the application workspace.
 
 Because the core application OpenTofu stages restrict environmental deployment allocations (`tofu apply`) directly to authenticated contexts to protect branch safety, **reviewers must merge their code directly into the `main` branch to provision live cloud resources**:
 
