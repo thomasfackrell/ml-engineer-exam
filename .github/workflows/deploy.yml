@@ -115,10 +115,10 @@ jobs:
             trivy-fs.txt
           retention-days: 14
 
-  # Job 3: Infrastructure (SKIPPED on Draft PRs)
-  # Only proceeds if tests and security scans are green, and the PR is not a draft.
+  # Job 3: Infrastructure (Runs on Non-Draft PRs & Main Merges)
+  # Prepares ECR for building, and updates full architecture on main.
   infrastructure:
-    name: "Infra: Provision ECR"
+    name: "Infra: Balance State & Provision"
     needs: [python_tests, security_scans, lint]
     if: github.event_name == 'push' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
@@ -138,18 +138,27 @@ jobs:
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
 
-      - name: OpenTofu Apply (ECR Only)
+      - name: OpenTofu Execution Engine
         working-directory: terraform/app
+        id: tofu_output
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
           tofu init -backend-config="bucket=ml-engineer-exam-tf-state-${ACCOUNT_ID}"
+          
+          echo "=== 1. ENSURING BASE ECR REGISTRY EXISTS ==="
           tofu apply -target=aws_ecr_repository.app_repo -auto-approve
           
-          # Pull the URL directly from the target state resource instead of a root output macro
+          # Pull the URL for Job 4 to consume safely
           ECR_URL=$(tofu state show aws_ecr_repository.app_repo | grep repository_url | awk -F '"' '{print $2}')
           echo "ecr_url=${ECR_URL}" >> $GITHUB_OUTPUT
-        id: tofu_output
-
+          
+          # Dynamic branching logic based on branch target context
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "=== 2. MAIN BRANCH DETECTED: SKIPPING INTERMEDIATE PLAN ==="
+          else
+            echo "=== 2. PULL REQUEST DETECTED: GENERATING INFRASTRUCTURE PREVIEW ==="
+            tofu plan
+          fi
   # Job 4: Build, Artifact Scan, and Smoke Test (SKIPPED on Draft PRs)
   # This verifies the "Body" (the Docker container) before pushing.
   build_verify_push:
@@ -203,6 +212,21 @@ jobs:
 
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Check if Image Tag Exists in ECR
+        id: check_tag
+        run: |
+          # Query ECR for the specific image tag. If found, it returns exit code 0.
+          if aws ecr describe-images --repository-name ml-engineer-exam --image-ids imageTag=${{ env.APP_VERSION }} >/dev/null 2>&1; then
+            echo "TAG_EXISTS=true" >> $GITHUB_ENV
+            echo "tag_exists=true" >> $GITHUB_OUTPUT
+            echo "⚠️ Tag ${{ env.APP_VERSION }} already exists in ECR. Will skip build and push operations."
+          else
+            echo "TAG_EXISTS=false" >> $GITHUB_ENV
+            echo "tag_exists=false" >> $GITHUB_OUTPUT
+            echo "✅ Tag ${{ env.APP_VERSION }} is new. Proceeding with build."
+          fi
+        continue-on-error: true
 
       # STEP A: Create the base requirements.txt from lockfile
       - name: Export Lockfile context
@@ -271,9 +295,10 @@ jobs:
           echo "Pushing verified clean asset to ECR..."
           docker push ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}
 
-  # Job 5: Deploy (Update Lambda) (ONLY runs on Merge to Main)
+  # Job 5: Deploy (Update Live Lambda Service)
+  # Only executes when code lands securely on the main branch.
   deploy:
-    name: "Deploy to AWS"
+    name: "Deploy: Update Production Lambda"
     needs: [infrastructure, build_verify_push]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
@@ -291,9 +316,12 @@ jobs:
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
 
-      - name: OpenTofu Apply (Full Deployment)
+      - name: OpenTofu Apply (Full Rollout)
         working-directory: terraform/app
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
           tofu init -backend-config="bucket=ml-engineer-exam-tf-state-${ACCOUNT_ID}"
+          
+          echo "=== EXECUTING FINAL STATE SYNCHRONIZATION ==="
+          # Injecting the verified image tag straight from the build output macro!
           tofu apply -var="container_image_tag=${{ needs.build_verify_push.outputs.version }}" -auto-approve
