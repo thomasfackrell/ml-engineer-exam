@@ -21,9 +21,8 @@ COPY pyproject.toml uv.lock ./
 # We copy the specific package folder instead of the whole 'src' directory
 COPY src/ml_engineer_exam ./src/ml_engineer_exam
 
-# 5. Install dependencies and the project as a system package
-# This makes 'import ml_engineer_exam' work anywhere in the container
-RUN uv pip install . --system
+# 5. Use uv sync to honor the lockfile versions explicitly
+RUN uv sync --system --no-dev
 
 # 6. COPY: Model artifacts
 # We preserve the 'data/models' pathing so MLDeployConfig can find them
