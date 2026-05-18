@@ -1,0 +1,299 @@
+name: Deploy Application
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened, ready_for_review ]
+
+jobs:
+  # Gate 0: Code Hygiene (Runs on Draft & Full PRs)
+  lint:
+    name: "Code Quality"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.1.7
+      - uses: astral-sh/setup-uv@v3
+
+        # Note: 'uv sync --all-groups' is used here to install ruff
+      - name: Install Development Dependencies
+        run: uv sync --all-groups
+      
+      - name: Check for errors & import sorting
+        run: uv run ruff check .
+        
+      - name: Verify formatting
+        run: uv run ruff format --check .
+
+  # Gate 1: Python Logic & Math (Runs on Draft & Full PRs)
+  # Ensures schemas are valid and the model produces the correct math (0.719...)
+  # This runs on the host runner to fail early if the "brain" is broken.
+  python_tests:
+    name: "Tests: Unit & Integration"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.7
+        with:
+          lfs: true # Critical for downloading the .joblib models
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install Development Dependencies
+        run: uv sync --all-groups
+
+      - name: Run Unit Tests (Mocked)
+        run: uv run pytest tests/unit -v --junitxml=unit-test-report.xml
+
+      - name: Run Integration Tests (Model Math Parity)
+        run: uv run pytest tests/integration -v --junitxml=integration-test-report.xml
+
+      - name: Upload Test Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-test-reports
+          path: |
+            unit-test-report.xml
+            integration-test-report.xml
+          retention-days: 14
+
+# Gate 2: Static Analysis (Runs on Draft & Full PRs)
+  security_scans:
+    name: "Security: SAST & SCA"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.7
+        with:
+          lfs: true 
+
+      # Pass 1 saves the JSON file unconditionally.
+      # Pass 2 uses --error to print findings and will fail the step if issues exist.
+      - name: Semgrep SAST (Code Scan)
+        run: |
+          python3 -m pip install semgrep
+          
+          echo "=== 1. COMPILING BACKGROUND REPORTS ==="
+          semgrep scan --config auto --json --output semgrep.json
+          
+          echo "=== 2. RUNNING CONSOLE LOG SAST ANALYSIS ==="
+          semgrep scan --config auto --error
+
+
+      - name: Trivy Filesystem Scan (Dependency Scan)
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'HIGH,CRITICAL'
+          format: 'table'
+          output: 'trivy-fs.txt'
+          exit-code: '1'
+
+      - name: Print Trivy Results
+        if: always() 
+        run: |
+          echo "=== 2. SCAN PROCESS COMPLETE! PRINTING RESULTS TO CONSOLE ==="
+          if [ -f trivy-fs.txt ]; then
+            cat trivy-fs.txt
+          else
+            echo "Error: trivy-fs.txt was not generated."
+          fi
+
+      # FIXED: Added 'if: always()' so that diagnostic artifacts are uploaded even if 
+      # Semgrep or Trivy fail the job. Kept retention at 14 days.
+      - name: Upload Scan Artifacts
+        uses: actions/upload-artifact@v4
+        if: always() 
+        with:
+          name: security-reports
+          path: |
+            semgrep.json
+            trivy-fs.txt
+          retention-days: 14
+
+  # Job 3: Infrastructure (SKIPPED on Draft PRs)
+  # Only proceeds if tests and security scans are green, and the PR is not a draft.
+  infrastructure:
+    name: "Infra: Provision ECR"
+    needs: [python_tests, security_scans, lint]
+    if: github.event_name == 'push' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    outputs:
+      ecr_url: ${{ steps.tofu_output.outputs.ecr_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.7
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+
+      - name: OpenTofu Apply (ECR Only)
+        working-directory: terraform/app
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+          tofu init -backend-config="bucket=ml-engineer-exam-tf-state-${ACCOUNT_ID}"
+          tofu apply -target=aws_ecr_repository.app_repo -auto-approve
+          
+          # Pull the URL directly from the target state resource instead of a root output macro
+          ECR_URL=$(tofu state show aws_ecr_repository.app_repo | grep repository_url | awk -F '"' '{print $2}')
+          echo "ecr_url=${ECR_URL}" >> $GITHUB_OUTPUT
+        id: tofu_output
+
+  # Job 4: Build, Artifact Scan, and Smoke Test (SKIPPED on Draft PRs)
+  # This verifies the "Body" (the Docker container) before pushing.
+  build_verify_push:
+    name: "Build & Container Verify"
+    needs: infrastructure
+    if: github.event_name == 'push' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version_env.outputs.VERSION_OUT }} # Explicitly pass resolved version to deploy job
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.7
+        with:
+          lfs: true
+          fetch-depth: 0 # For Commitizen
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      # Automatically bump version, create changelog, and tag git
+      - name: Bump version and select tag
+        id: cz_bump
+        uses: commitizen-tools/commitizen-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }} # Built-in GitHub credential
+          branch: main
+        continue-on-error: true # Safe fallback if running on a feature branch
+
+      # Determine if we use the SemVer tag or fallback to SHA (e.g. on feature branches)
+      # Also logs version to step output for downstream Job 5 usage.
+      - name: Set Version Env Var
+        id: version_env
+        run: |
+          if [ -n "${{ steps.cz_bump.outputs.version }}" ]; then
+            echo "APP_VERSION=${{ steps.cz_bump.outputs.version }}" >> $GITHUB_ENV
+            echo "VERSION_OUT=${{ steps.cz_bump.outputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "APP_VERSION=${{ github.sha }}" >> $GITHUB_ENV
+            echo "VERSION_OUT=${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.3.0
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # STEP A: Create the base requirements.txt from lockfile
+      - name: Export Lockfile context
+        run: |
+          uv export --format requirements-txt --no-dev --no-hashes --output-file requirements.txt
+
+      # STEP B: Build the test image stage (Includes awslambdaric for emulator validation)
+      - name: Build Local Test Image Target
+        uses: docker/build-push-action@v5.3.0
+        with:
+          context: .
+          load: true
+          target: test-env
+          tags: ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy Container Image Scan (Scan the test target for fast security coverage)
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: '${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}-test'
+          severity: 'HIGH,CRITICAL'
+          format: 'table'
+          output: 'trivy-image.txt'
+          exit-code: '1'
+
+      - name: Print Container Scan Results
+        if: always()
+        run: |
+          if [ -f trivy-image.txt ]; then
+            cat trivy-image.txt
+          fi
+
+      - name: Upload Container Scan Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: container-security-report
+          path: trivy-image.txt
+          retention-days: 14
+
+      # STEP C: Run Smoke tests against the test target
+      - name: Artifact Smoke Test (System Verification)
+        run: |
+          echo "Starting container for artifact verification..."
+          docker run -d --name smoke-test -p 9000:8080 \
+            -e ROOT_PATH=/var/task \
+            -e APP_NAME=ml_engineer_exam \
+            ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}-test
+          
+          sleep 10
+          
+          uv run python tests/verify_inference.py --url http://localhost:9000/2015-03-31/functions/function/invocations --model linear
+          uv run python tests/verify_inference.py --url http://localhost:9000/2015-03-31/functions/function/invocations --model ridge
+          uv run python tests/verify_inference.py --url http://localhost:9000/2015-03-31/functions/function/invocations --model random_forest
+          
+          echo "All model smoke tests passed inside emulator. Cleaning up..."
+          docker rm -f smoke-test
+
+      # STEP D: Tests passed! Now compile the pristine production image target and push it
+      - name: Build & Push Production Image to ECR
+        run: |
+          echo "Compiling final production stage image..."
+          docker build --target production -t ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }} .
+          
+          echo "Pushing verified clean asset to ECR..."
+          docker push ${{ needs.infrastructure.outputs.ecr_url }}:${{ env.APP_VERSION }}
+
+  # Job 5: Deploy (Update Lambda) (ONLY runs on Merge to Main)
+  deploy:
+    name: "Deploy to AWS"
+    needs: [infrastructure, build_verify_push]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.7
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+
+      - name: OpenTofu Apply (Full Deployment)
+        working-directory: terraform/app
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+          tofu init -backend-config="bucket=ml-engineer-exam-tf-state-${ACCOUNT_ID}"
+          tofu apply -var="container_image_tag=${{ needs.build_verify_push.outputs.version }}" -auto-approve
